@@ -1273,6 +1273,6 @@ st.markdown("--- ")
 # Create a footer with logo and text
 footer_col1, footer_col2 = st.columns([1, 8])
 with footer_col1:
-    st.image("assets/aurak-logo.png", width=100)
+    st.image("assets/aurak-logo.png", width=200)
 with footer_col2:
     st.caption("ADRS is a research tool developed by American University of Ras Al Khaimah, Computer Science Department")
