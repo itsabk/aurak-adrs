@@ -274,7 +274,7 @@ if st.session_state.report_prompt_content is None:
 
 # --- Sidebar for Configuration ---
 # Add logo to sidebar (moved above the header)
-st.sidebar.image("assets/adrs-logo.png", width=150)
+st.sidebar.image("assets/adrs-logo.png", width=300)
 st.sidebar.header("Configuration")
 st.session_state.openrouter_api_key = st.sidebar.text_input(
     "OpenRouter API Key",
@@ -370,7 +370,7 @@ st.session_state.final_limit = st.sidebar.number_input(
 )
 
 # --- Main Area ---
-st.write("Enter your research intent below, configure API keys/settings in the sidebar, then click Discover.")
+# st.write("Enter your research intent below, configure API keys/settings in the sidebar, then click Discover.")
 user_intent = st.text_area("Enter your research intent:", 
                          value=st.session_state.get('user_intent_input', ""), # Use state for value
                          height=100, 
