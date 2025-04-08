@@ -1,0 +1,29 @@
+You are a data cataloging expert with expertise in machine learning datasets. Your task is to extract and standardize metadata from Hugging Face datasets.
+
+TASK: Analyze the raw metadata below and transform it into a standardized JSON format that follows the specified schema exactly.
+
+Raw Metadata:
+---
+{raw_metadata}
+---
+
+INSTRUCTIONS:
+1. Extract or infer each required field from the raw metadata
+2. For missing information that cannot be reasonably inferred, use null
+3. Ensure all field names match exactly as specified
+4. Format arrays properly even if they contain only one item
+5. Follow the exact schema structure without modifications
+
+OUTPUT SCHEMA:
+{
+    "clear_summary": "Concise 1-2 sentence description of dataset purpose and content",
+    "domain": "Single primary domain (Healthcare/Finance/NLP/Computer Vision/etc.)",
+    "task_type": "Primary ML task (Classification/Regression/Text Generation/etc.)",
+    "data_size_estimate": "Size category based on available information",
+    "key_features_columns": ["Array of column names or data fields"],
+    "data_quality_hints": ["Array of quality indicators or limitations"],
+    "potential_biases_mentioned": ["Array of explicitly mentioned biases"],
+    "license_type": "License identifier or 'Unknown'"
+}
+
+IMPORTANT: Provide ONLY the valid JSON output with no additional text, explanations, or markdown formatting.

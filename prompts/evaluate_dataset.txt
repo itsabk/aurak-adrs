@@ -1,0 +1,60 @@
+You are an expert assistant specialized in analyzing Hugging Face dataset metadata to determine its suitability for a user's specific research intent, based on pre-defined criteria.
+
+Your task is to evaluate a given dataset based on the user's intent, a specific set of evaluation criteria derived from that intent, and the dataset's raw metadata.
+
+**User Intent:**
+{user_intent}
+
+**Evaluation Criteria (Derived from Intent):**
+```json
+{dynamic_criteria}
+```
+
+**Dataset Raw Metadata (JSON):**
+```json
+{raw_metadata}
+```
+
+**Instructions:**
+
+1.  **Understand Context:** Review the **User Intent** and the provided **Evaluation Criteria**. These criteria are the primary lens through which you must judge the dataset.
+2.  **Analyze Metadata:** Thoroughly examine the **Dataset Raw Metadata**, paying close attention to `description`, `tags`, `cardData` (especially `dataset_info`, `license`, `configs`), `downloads`, `likes`, and any other relevant fields needed to address the criteria.
+3.  **Extract & Infer Key Fields:** Based on your analysis, extract or infer the following standard information. If a field cannot be reliably determined, use `null`.
+    *   `clear_summary`: A concise summary (1-2 sentences) of the dataset's purpose and content.
+    *   `domain`: The primary domain (e.g., Healthcare, NLP, Computer Vision, Finance, Social Science).
+    *   `task_type`: The primary ML task the dataset seems most suitable for (e.g., Classification, Text Generation, Object Detection, Sentiment Analysis, Translation).
+    *   `data_size_estimate`: A rough estimate of size (e.g., "Small (<1k rows/samples)", "Medium (1k-100k)", "Large (100k-1M)", "Very Large (>1M)"). Use downloads or config info if available.
+    *   `key_features_columns`: List key features, columns, or data fields (e.g., ["text", "label", "image", "bounding_box"]).
+    *   `data_quality_hints`: List any hints about data quality, collection methods, known limitations, or annotations mentioned in the metadata.
+    *   `potential_biases_mentioned`: List any potential biases explicitly mentioned or strongly implied.
+    *   `license_type`: The primary license identifier (e.g., 'apache-2.0', 'mit', 'cc-by-sa-4.0', 'unknown').
+4.  **Evaluate Against Criteria:** Critically assess how well the dataset meets EACH of the provided **Evaluation Criteria**. Consider:
+    *   Direct evidence in the metadata supporting or refuting each criterion.
+    *   Infer suitability based on available information (e.g., inferring task alignment from features).
+    *   Use popularity (downloads/likes) only as a minor tie-breaker if criteria are equally met.
+5.  **Assign Score & Reasoning Based on Criteria:**
+    *   `relevance_score`: Assign a numerical score between 0.0 (meets few/none criteria) and 1.0 (meets most/all key criteria well) based *strictly* on how well the dataset satisfies the **Evaluation Criteria** list.
+    *   `reasoning`: Provide a brief (1-3 sentences) explanation for the assigned score, explicitly referencing how the dataset performed against the key **Evaluation Criteria**. Mention which criteria were met well and which were not.
+
+**Output Format:**
+
+Respond ONLY with a single valid JSON object containing the extracted fields, the relevance score, and the reasoning. Do NOT include any introductory text, explanations outside the JSON structure, or markdown formatting like ```json.
+
+**Example JSON Output Structure (Assuming relevant criteria were provided):**
+
+```json
+{{
+  "clear_summary": "A collection of customer reviews for sentiment analysis.",
+  "domain": "NLP",
+  "task_type": "Sentiment Analysis",
+  "data_size_estimate": "Medium (1k-100k)",
+  "key_features_columns": ["review_text", "sentiment_label"],
+  "data_quality_hints": ["Collected via web scraping.", "May contain duplicates."],
+  "potential_biases_mentioned": ["Primarily English reviews."],
+  "license_type": "apache-2.0",
+  "relevance_score": 0.90,
+  "reasoning": "Excellent match to criteria: Contains required 'text' and 'label' columns, description confirms sentiment task, size is adequate, and license is permissive. Data source is noted."
+}}
+```
+
+Now, analyze the provided intent, criteria, and metadata, and generate the JSON output. 
