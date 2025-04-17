@@ -2,6 +2,7 @@ import os
 import litellm
 import json
 import datetime
+import re # Added import for regex
 from dotenv import load_dotenv
 from typing import Dict, List, Optional, Union
 from .metadata_schema import EvaluatedMetadata
@@ -150,23 +151,51 @@ def evaluate_dataset_with_llm(
 
         # The prompt asks for JSON, attempt to parse it
         try:
-            # --- More Robust JSON Extraction --- 
+            # --- Stage 1: Extract potential JSON block --- 
             llm_output_cleaned = llm_output_str.strip()
-            # Find the first '{' and the last '}'
-            start_index = llm_output_cleaned.find('{')
-            end_index = llm_output_cleaned.rfind('}')
-            
-            if start_index != -1 and end_index != -1 and start_index < end_index:
-                json_str = llm_output_cleaned[start_index : end_index + 1]
-                print(f"--- DEBUG: Attempting to parse extracted JSON snippet for {raw_metadata.get('id', '[unknown ID]')}: {json_str[:100]}...{json_str[-100:]}") # Log snippet
+            json_str = None
+            # Try extracting from ```json ... ``` fences first
+            match = re.search(r"```json\n(.*?)\n```", llm_output_cleaned, re.DOTALL)
+            if match:
+                json_str = match.group(1).strip()
+                print(f"--- DEBUG: Extracted JSON from ```json fence for {raw_metadata.get('id', '[unknown ID]')}")
             else:
-                # Fallback if braces aren't found correctly - try direct parse after basic strip
-                print(f"Warning: Could not reliably find JSON object boundaries for {raw_metadata.get('id', '[unknown ID]')}. Attempting parse after basic strip.")
-                json_str = llm_output_cleaned 
-                # If fences were the issue, the previous logic might have worked better, but this aims for robustness against other leading/trailing text.
+                # Fallback: Find the outermost curly braces
+                start_index = llm_output_cleaned.find('{')
+                end_index = llm_output_cleaned.rfind('}')
+                if start_index != -1 and end_index != -1 and start_index < end_index:
+                    json_str = llm_output_cleaned[start_index : end_index + 1]
+                    print(f"--- DEBUG: Extracted JSON using outer braces for {raw_metadata.get('id', '[unknown ID]')}")
+                else:
+                    # If no clear block found, use the whole cleaned output as a last resort
+                    print(f"Warning: Could not reliably find JSON block for {raw_metadata.get('id', '[unknown ID]')}. Using entire cleaned output.")
+                    json_str = llm_output_cleaned
+            
+            if not json_str:
+                print(f"Error: Could not extract any potential JSON content for {raw_metadata.get('id', '[unknown ID]')}.")
+                return None
 
-            # --- Parse the Extracted/Cleaned JSON String --- 
-            evaluated_data: EvaluatedMetadata = json.loads(json_str)
+            # --- Stage 2: Clean the extracted string --- 
+            json_str_cleaned = json_str
+            try:
+                # Remove single-line comments (// ...)
+                json_str_cleaned = re.sub(r"//.*", "", json_str_cleaned)
+                # Remove multi-line comments (/* ... */)
+                json_str_cleaned = re.sub(r"/\*.*?\*/", "", json_str_cleaned, flags=re.DOTALL)
+                # Remove trailing comma before final brace
+                json_str_cleaned = re.sub(r",\s*\}\s*$", "}", json_str_cleaned).strip()
+                # Standardize None/True/False
+                json_str_cleaned = re.sub(r"\bNone\b", "null", json_str_cleaned)
+                json_str_cleaned = re.sub(r"\bTrue\b", "true", json_str_cleaned)
+                json_str_cleaned = re.sub(r"\bFalse\b", "false", json_str_cleaned)
+            except Exception as clean_err:
+                print(f"Warning: Error during JSON cleaning regex for {raw_metadata.get('id', '[unknown ID]')}: {clean_err}. Attempting parse with partially cleaned string.")
+                # Proceed with potentially partially cleaned string
+
+            print(f"--- DEBUG: Attempting to parse cleaned JSON snippet for {raw_metadata.get('id', '[unknown ID]')}: {json_str_cleaned[:100]}...{json_str_cleaned[-100:]}")
+
+            # --- Stage 3: Parse the Cleaned JSON String --- 
+            evaluated_data: EvaluatedMetadata = json.loads(json_str_cleaned)
             
             # Basic validation (can be expanded)
             if not isinstance(evaluated_data, dict):

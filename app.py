@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import json # Added json import
 import litellm
 from src.llm_interaction import get_llm_response, evaluate_dataset_with_llm, DEFAULT_MODEL
 from src.hf_search import search_datasets
@@ -17,6 +18,9 @@ import time # For potential UI updates/sleeps
 import re # Import re for regular expressions
 import streamlit.components.v1 as components
 from streamlit_local_storage import LocalStorage # Import correct class
+
+# --- Disable LiteLLM background logging to prevent thread pool conflicts ---
+litellm.disable_streaming_logging = True
 
 # Instantiate local storage
 localS = LocalStorage()
@@ -447,10 +451,9 @@ st.session_state.final_limit = st.sidebar.number_input(
 # --- Main Area ---
 # st.write("Enter your research intent below, configure API keys/settings in the sidebar, then click Discover.")
 user_intent = st.text_area("Enter your research intent:",
-                         value=st.session_state.get('user_intent_main_input', ""), # Use state for value
                          height=100,
                          placeholder="e.g., Datasets for analyzing customer churn in the telecommunications sector",
-                         key="user_intent_main_input") # Assign key
+                         key="user_intent_main_input") # Key is sufficient
 
 # Update session state when text area changes (necessary for example buttons to work seamlessly)
 # No longer needed - st.session_state.user_intent_input = user_intent
@@ -468,12 +471,18 @@ with st.expander("📋 Try an example intent", expanded=False):
         "Medical imaging datasets for tumor segmentation"
     ]
 
-    cols = st.columns(len(examples))
-    for i, example in enumerate(examples):
-        if cols[i].button(f"Example {i+1}", help=example, key=f"ex_btn_{i}"):
-            # Update the specific input key's state
-            st.session_state.user_intent_main_input = example
-            st.rerun() # Rerun to update the text_area value
+# Define callback function BEFORE the loop
+def update_intent_input(example_text):
+    st.session_state.user_intent_main_input = example_text
+
+cols = st.columns(len(examples))
+for i, example in enumerate(examples):
+    # Use on_click for the button
+    cols[i].button(f"Example {i+1}", 
+                   help=example, 
+                   key=f"ex_btn_{i}",
+                   on_click=update_intent_input, 
+                   args=(example,)) 
 
 st.divider() # Visual separation
 
@@ -875,11 +884,11 @@ if st.session_state.search_triggered and not st.session_state.error_message:
                 if col in df_display.columns and col not in ['url', 'id']:
                     if col == 'relevance_score':
                         df_display[col] = df_display[col].round(3) # Format score
-                        df_display[col].fillna(0.0, inplace=True) # Fill NA score with 0
+                        df_display[col] = df_display[col].fillna(0.0) # Fill NA score with 0
                     elif col == 'reasoning':
-                        df_display[col].fillna("N/A", inplace=True)
+                        df_display[col] = df_display[col].fillna("N/A")
                     else:
-                        df_display[col].fillna("N/A", inplace=True)
+                        df_display[col] = df_display[col].fillna("N/A")
 
             # --- Define Column Order and Rename ---
             # Bring score near the start
