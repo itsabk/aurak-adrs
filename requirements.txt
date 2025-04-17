@@ -69,3 +69,5 @@ tabulate
 datasets
 xhtml2pdf
 markdown
+streamlit-local-storage
+hf-hub-ctranslate2

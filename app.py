@@ -11,12 +11,15 @@ from dotenv import load_dotenv
 import concurrent.futures
 from tqdm import tqdm # For better progress tracking with concurrency
 from typing import List
-import json
 import traceback
 import altair as alt # Import altair for potential advanced charts
 import time # For potential UI updates/sleeps
 import re # Import re for regular expressions
 import streamlit.components.v1 as components
+from streamlit_local_storage import LocalStorage # Import correct class
+
+# Instantiate local storage
+localS = LocalStorage()
 
 # --- Default Prompt File Paths (used for initial load) ---
 DEFAULT_CRITERIA_PROMPT_PATH = "prompts/generate_criteria.txt"
@@ -26,6 +29,29 @@ DEFAULT_REPORT_PROMPT_PATH = "prompts/generate_report.txt"   # New default path
 
 # Load .env file for default keys (if available)
 load_dotenv()
+
+# --- Configuration Persistence Functions ---
+# def load_config():
+#     """Loads configuration from the JSON file."""
+#     if os.path.exists(CONFIG_FILE):
+#         try:
+#             with open(CONFIG_FILE, 'r') as f:
+#                 return json.load(f)
+#         except (json.JSONDecodeError, IOError) as e:
+#             st.warning(f"Could not load configuration file ({CONFIG_FILE}): {e}. Using defaults.")
+#             return {}
+#     return {}
+
+# def save_config(config_dict):
+#     """Saves the configuration dictionary to the JSON file."""
+#     try:
+#         with open(CONFIG_FILE, 'w') as f:
+#             json.dump(config_dict, f, indent=4)
+#     except IOError as e:
+#         st.error(f"Could not save configuration to {CONFIG_FILE}: {e}")
+
+# Load existing configuration - REMOVED
+# loaded_config = load_config()
 
 # --- Helper Functions ---
 def proceed_with_search(keywords, user_intent, selected_model):
@@ -160,6 +186,7 @@ def proceed_with_search(keywords, user_intent, selected_model):
         st.exception(e) # Show full traceback for errors
         st.session_state.search_triggered = False # Ensure search is marked as not done on error
         st.session_state.datasets = [] # Clear datasets on error
+        st.session_state.evaluated_datasets = [] # Also clear evaluated datasets
 
 
 st.set_page_config(
@@ -215,10 +242,27 @@ with col2:
     st.title("ADRS – Automated Dataset Recommendation System")
 
 # --- Session State Initialization ---
+# Fetch initial values from local storage
+# local_storage_keys = ["openrouter_api_key", "huggingface_hub_token", "selected_model"]
+# Need to provide default values for get_items if key might not exist
+# defaults_for_get = {
+#     "openrouter_api_key": os.getenv("OPENROUTER_API_KEY", ""),
+#     "huggingface_hub_token": os.getenv("HUGGINGFACE_HUB_TOKEN", ""),
+#     "selected_model": DEFAULT_MODEL
+# }
+# initial_config = get_items(local_storage_keys, default_value=defaults_for_get, key="get_init_config")
+
+# Fetch individual items using LocalStorage().getItem
+initial_or_key = localS.getItem('openrouter_api_key')
+initial_hf_key = localS.getItem('huggingface_hub_token')
+initial_model = localS.getItem('selected_model')
+
 # Initialize keys in session state if they don't exist
+# Use local storage values first, then env vars, then hardcoded
 default_values = {
-    'openrouter_api_key': os.getenv("OPENROUTER_API_KEY", ""),
-    'huggingface_hub_token': os.getenv("HUGGINGFACE_HUB_TOKEN", ""),
+    'openrouter_api_key': initial_or_key if initial_or_key is not None else os.getenv("OPENROUTER_API_KEY", ""),
+    'huggingface_hub_token': initial_hf_key if initial_hf_key is not None else os.getenv("HUGGINGFACE_HUB_TOKEN", ""),
+    'selected_model': initial_model if initial_model is not None else DEFAULT_MODEL, # Load selected model
     'keywords_generated': False,
     'generated_keywords': [],
     'refined_keywords_str': "",
@@ -242,8 +286,13 @@ default_values = {
     'generated_report': None, # Add state for the generated report
     'report_charts': None, # Add state for generated charts
     'evaluation_errors': [], # Add state for evaluation errors
-    'user_intent_input': None, # For handling example buttons
+    'user_intent_input': None, # For handling example buttons (deprecated by direct key use)
     'mode': 'auto', # Default to auto mode
+    # Add keys for the input widgets to manage state before saving
+    'openrouter_api_key_input': initial_or_key if initial_or_key is not None else os.getenv("OPENROUTER_API_KEY", ""),
+    'huggingface_hub_token_input': initial_hf_key if initial_hf_key is not None else os.getenv("HUGGINGFACE_HUB_TOKEN", ""),
+    'selected_model_input': initial_model if initial_model is not None else DEFAULT_MODEL,
+    'user_intent_main_input': "", # Initialize main input area state
 }
 for key, default_value in default_values.items():
     if key not in st.session_state:
@@ -272,25 +321,51 @@ if st.session_state.keyword_prompt_content is None:
 if st.session_state.report_prompt_content is None:
     st.session_state.report_prompt_content = load_prompt_from_file(DEFAULT_REPORT_PROMPT_PATH)
 
+# --- Callback function to save config ---
+def _save_config_callback():
+    """Callback to save configuration when sidebar inputs change."""
+    config_to_save = {
+        'openrouter_api_key_input': st.session_state.get('openrouter_api_key_input', ''),
+        'huggingface_hub_token_input': st.session_state.get('huggingface_hub_token_input', ''),
+        'selected_model_input': st.session_state.get('selected_model_input', DEFAULT_MODEL)
+    }
+    # Update main session state keys from the input keys
+    st.session_state.openrouter_api_key = config_to_save['openrouter_api_key_input']
+    st.session_state.huggingface_hub_token = config_to_save['huggingface_hub_token_input']
+    st.session_state.selected_model = config_to_save['selected_model_input']
+    # Save to local storage instead of file
+    # Provide unique keys for each setItem call within the callback
+    localS.setItem("openrouter_api_key", config_to_save['openrouter_api_key_input'], key="ls_set_or_key")
+    localS.setItem("huggingface_hub_token", config_to_save['huggingface_hub_token_input'], key="ls_set_hf_key")
+    localS.setItem("selected_model", config_to_save['selected_model_input'], key="ls_set_model")
+    # save_config(config_to_save) # REMOVED
+
 # --- Sidebar for Configuration ---
 # Add logo to sidebar (moved above the header)
 st.sidebar.image("assets/adrs-logo.png", width=300)
 st.sidebar.header("Configuration")
 st.session_state.openrouter_api_key = st.sidebar.text_input(
     "OpenRouter API Key",
-    value=st.session_state.openrouter_api_key,
     type="password",
-    help="Get yours from https://openrouter.ai/keys"
+    help="Get yours from https://openrouter.ai/keys",
+    key="openrouter_api_key_input", # Assign a key
+    on_change=_save_config_callback # Add callback
 )
 st.session_state.huggingface_hub_token = st.sidebar.text_input(
     "Hugging Face Hub Token",
-    value=st.session_state.huggingface_hub_token,
     type="password",
-    help="Increases API rate limits. Get yours from https://huggingface.co/settings/tokens"
+    help="Increases API rate limits. Get yours from https://huggingface.co/settings/tokens",
+    key="huggingface_hub_token_input", # Assign a key
+    on_change=_save_config_callback # Add callback
 )
 st.sidebar.markdown("--- ")
 st.sidebar.header("Settings")
-selected_model = st.sidebar.text_input("LLM Model (OpenRouter)", value=DEFAULT_MODEL)
+# Use the main state key for selected_model here, as callback updates it
+selected_model = st.sidebar.text_input(
+    "LLM Model (OpenRouter)",
+    key="selected_model_input", # Assign a key
+    on_change=_save_config_callback # Add callback
+)
 
 # --- Add Mode Toggle UI ---
 st.sidebar.markdown("--- ")
@@ -371,14 +446,14 @@ st.session_state.final_limit = st.sidebar.number_input(
 
 # --- Main Area ---
 # st.write("Enter your research intent below, configure API keys/settings in the sidebar, then click Discover.")
-user_intent = st.text_area("Enter your research intent:", 
-                         value=st.session_state.get('user_intent_input', ""), # Use state for value
-                         height=100, 
+user_intent = st.text_area("Enter your research intent:",
+                         value=st.session_state.get('user_intent_main_input', ""), # Use state for value
+                         height=100,
                          placeholder="e.g., Datasets for analyzing customer churn in the telecommunications sector",
                          key="user_intent_main_input") # Assign key
 
 # Update session state when text area changes (necessary for example buttons to work seamlessly)
-st.session_state.user_intent_input = user_intent
+# No longer needed - st.session_state.user_intent_input = user_intent
 
 # Display mode information before discovery button
 st.info(f"Current Mode: **{st.session_state.mode.capitalize()}**  \n"
@@ -396,7 +471,8 @@ with st.expander("📋 Try an example intent", expanded=False):
     cols = st.columns(len(examples))
     for i, example in enumerate(examples):
         if cols[i].button(f"Example {i+1}", help=example, key=f"ex_btn_{i}"):
-            st.session_state.user_intent_input = example
+            # Update the specific input key's state
+            st.session_state.user_intent_main_input = example
             st.rerun() # Rerun to update the text_area value
 
 st.divider() # Visual separation
@@ -420,7 +496,7 @@ if st.session_state.workflow_step == 0 and st.button("Discover Datasets"):
     st.session_state.evaluation_errors = [] # Reset evaluation errors
 
     # Use the intent from the session state which reflects text area content
-    user_intent = st.session_state.user_intent_input 
+    user_intent = st.session_state.user_intent_main_input
 
     # --- Pre-flight Check ---
     if not st.session_state.openrouter_api_key:
@@ -442,7 +518,7 @@ if st.session_state.workflow_step == 0 and st.button("Discover Datasets"):
                 # Format the prompt (ensure it contains {user_intent})
                 formatted_keyword_prompt = keyword_prompt_template.format(user_intent=user_intent)
                 
-                llm_model_to_use = selected_model if selected_model else DEFAULT_MODEL
+                llm_model_to_use = st.session_state.selected_model # Use model from session state
                 raw_llm_response = get_llm_response(formatted_keyword_prompt, model=llm_model_to_use)
 
                 lines = [line.strip() for line in raw_llm_response.strip().split('\n') if line.strip()]
@@ -477,7 +553,7 @@ if st.session_state.workflow_step == 0 and st.button("Discover Datasets"):
                                 raise ValueError("Criteria Generation Prompt is missing or invalid. Check sidebar settings.")
                             
                             formatted_criteria_prompt = criteria_prompt_template.format(user_intent=user_intent)
-                            criteria_llm_output = get_llm_response(prompt=formatted_criteria_prompt, model=llm_model_to_use)
+                            criteria_llm_output = get_llm_response(prompt=formatted_criteria_prompt, model=st.session_state.selected_model)
                             
                             # Parse the criteria (expected JSON list of strings)
                             try:
@@ -521,8 +597,15 @@ if st.session_state.workflow_step == 0 and st.button("Discover Datasets"):
                     st.session_state.criteria_confirmed = True
                     st.session_state.workflow_step = 3  # Move to search/results step
                     
+                    # Persist config before potentially long search
+                    # save_config({
+                    #     'openrouter_api_key': st.session_state.openrouter_api_key,
+                    #     'huggingface_hub_token': st.session_state.huggingface_hub_token,
+                    #     'selected_model': st.session_state.selected_model
+                    # })
+
                     # Continue with search
-                    proceed_with_search(st.session_state.final_keywords, user_intent, selected_model)
+                    proceed_with_search(st.session_state.final_keywords, user_intent, st.session_state.selected_model)
                 else:
                     st.session_state.workflow_step = 1  # Move to keyword confirmation step in assistive mode
             else:
@@ -536,6 +619,12 @@ if st.session_state.workflow_step == 0 and st.button("Discover Datasets"):
             st.session_state.error_message = f"An error occurred during keyword generation: {e}"
             st.error(st.session_state.error_message)
             st.exception(e) # Show full traceback for other errors
+            # Persist state even on error - REMOVED (handled by on_change)
+            # save_config({
+            #     'openrouter_api_key': st.session_state.openrouter_api_key,
+            #     'huggingface_hub_token': st.session_state.huggingface_hub_token,
+            #     'selected_model': st.session_state.selected_model
+            # })
 
 # --- Keyword Refinement and Confirmation ---
 elif st.session_state.workflow_step == 1:
@@ -561,6 +650,12 @@ elif st.session_state.workflow_step == 1:
             st.info(f"Using keywords for search: `{', '.join(final_keywords)}`")
             st.session_state.final_keywords = final_keywords
             st.session_state.workflow_step = 2  # Move to criteria generation step
+            # Persist config before moving to next step - REMOVED
+            # save_config({
+            #     'openrouter_api_key': st.session_state.openrouter_api_key,
+            #     'huggingface_hub_token': st.session_state.huggingface_hub_token,
+            #     'selected_model': st.session_state.selected_model
+            # })
             st.rerun()  # Rerun to update UI
 
 # --- Criteria Generation and Confirmation ---
@@ -570,7 +665,7 @@ elif st.session_state.workflow_step == 2:
     if st.session_state.mode == "auto" and not st.session_state.criteria_confirmed:
         st.info(f"Current Mode: {st.session_state.mode.capitalize()}")
         st.info(f"Using keywords for search: `{', '.join(st.session_state.final_keywords)}`")
-        user_intent = st.session_state.user_intent_input
+        user_intent = st.session_state.user_intent_main_input # Needs to be retrieved correctly
         
         st.subheader("2. Generating Evaluation Criteria...")
         with st.spinner("Asking LLM to generate evaluation criteria based on your intent..."):
@@ -581,7 +676,7 @@ elif st.session_state.workflow_step == 2:
                     raise ValueError("Criteria Generation Prompt is missing or invalid. Check sidebar settings.")
                 
                 formatted_criteria_prompt = criteria_prompt_template.format(user_intent=user_intent)
-                llm_model_to_use = selected_model if selected_model else DEFAULT_MODEL
+                llm_model_to_use = st.session_state.selected_model # Use model from session state
                 criteria_llm_output = get_llm_response(prompt=formatted_criteria_prompt, model=llm_model_to_use)
                 
                 # Parse the criteria (expected JSON list of strings)
@@ -626,13 +721,20 @@ elif st.session_state.workflow_step == 2:
         st.session_state.criteria_confirmed = True
         st.session_state.workflow_step = 3  # Move to search/results step
         
+        # Persist config before potentially long search - REMOVED
+        # save_config({
+        #     'openrouter_api_key': st.session_state.openrouter_api_key,
+        #     'huggingface_hub_token': st.session_state.huggingface_hub_token,
+        #     'selected_model': st.session_state.selected_model
+        # })
+
         # Continue with search
-        proceed_with_search(st.session_state.final_keywords, user_intent, selected_model)
+        proceed_with_search(st.session_state.final_keywords, user_intent, st.session_state.selected_model)
     else:
         # Assistive mode - show criteria editing UI
         st.info(f"Current Mode: {st.session_state.mode.capitalize()}")
         st.info(f"Using keywords for search: `{', '.join(st.session_state.final_keywords)}`")
-        user_intent = st.session_state.user_intent_input
+        user_intent = st.session_state.user_intent_main_input # Get from text area state
         
         # Check if criteria are already generated
         if not st.session_state.criteria_confirmed:
@@ -645,7 +747,7 @@ elif st.session_state.workflow_step == 2:
                         raise ValueError("Criteria Generation Prompt is missing or invalid. Check sidebar settings.")
                     
                     formatted_criteria_prompt = criteria_prompt_template.format(user_intent=user_intent)
-                    llm_model_to_use = selected_model if selected_model else DEFAULT_MODEL
+                    llm_model_to_use = st.session_state.selected_model # Use model from session state
                     criteria_llm_output = get_llm_response(prompt=formatted_criteria_prompt, model=llm_model_to_use)
                     
                     # Parse the criteria (expected JSON list of strings)
@@ -710,15 +812,28 @@ elif st.session_state.workflow_step == 2:
                 st.session_state.criteria_confirmed = True
                 st.session_state.workflow_step = 3  # Move to search/results step
                 
+                # Persist config before potentially long search
+                save_config({
+                    'openrouter_api_key': st.session_state.openrouter_api_key,
+                    'huggingface_hub_token': st.session_state.huggingface_hub_token,
+                    'selected_model': st.session_state.selected_model
+                })
+                
                 # Continue with search
-                proceed_with_search(st.session_state.final_keywords, user_intent, selected_model)
+                proceed_with_search(st.session_state.final_keywords, user_intent, st.session_state.selected_model)
 
 # --- Search and Results Display ---
 elif st.session_state.workflow_step == 3:
-    user_intent = st.session_state.user_intent_input
+    user_intent = st.session_state.user_intent_main_input # Get from text area state
     if not st.session_state.search_triggered:
         # If we're in step 3 but search isn't triggered yet, start the search
-        proceed_with_search(st.session_state.final_keywords, user_intent, selected_model)
+        # Ensure config is saved before starting
+        save_config({
+            'openrouter_api_key': st.session_state.openrouter_api_key,
+            'huggingface_hub_token': st.session_state.huggingface_hub_token,
+            'selected_model': st.session_state.selected_model
+        })
+        proceed_with_search(st.session_state.final_keywords, user_intent, st.session_state.selected_model)
     
     # The rest of the results display logic will run as normal when search_triggered is True
 
@@ -850,7 +965,7 @@ if st.session_state.search_triggered and not st.session_state.error_message:
                 st.info("Auto-generating report and visualizations...")
                 
                 # --- Prepare context for the report prompt ---
-                user_intent = st.session_state.user_intent_input
+                user_intent = st.session_state.user_intent_main_input # Get from text area state
                 report_context = f"""
 User Intent:
 {user_intent}
@@ -999,7 +1114,7 @@ Evaluated Datasets Summary (Top {len(st.session_state.evaluated_datasets)}):
 
                     # --- Generate Text Report (using LLM) --- 
                     with st.spinner("Synthesizing findings with LLM..."):
-                        llm_model_to_use = selected_model if selected_model else DEFAULT_MODEL
+                        llm_model_to_use = st.session_state.selected_model # Use model from session state
                         report_output = get_llm_response(
                             prompt=report_prompt, 
                             model=llm_model_to_use,
@@ -1028,7 +1143,7 @@ Evaluated Datasets Summary (Top {len(st.session_state.evaluated_datasets)}):
                         st.session_state.report_charts = None    # Clear previous charts
 
                         # --- Prepare context for the report prompt (same as before) --- 
-                        user_intent = st.session_state.user_intent_input
+                        user_intent = st.session_state.user_intent_main_input # Get from text area state
                         report_context = f"""
 User Intent:
 {user_intent}
@@ -1179,7 +1294,7 @@ Evaluated Datasets Summary (Top {len(st.session_state.evaluated_datasets)}):
 
                             # --- Generate Text Report (using LLM) --- 
                             with st.spinner("Synthesizing findings with LLM..."):
-                                llm_model_to_use = selected_model if selected_model else DEFAULT_MODEL
+                                llm_model_to_use = st.session_state.selected_model # Use model from session state
                                 report_output = get_llm_response(
                                     prompt=report_prompt, 
                                     model=llm_model_to_use,
