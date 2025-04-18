@@ -648,12 +648,8 @@ if st.session_state.workflow_step == 0 and st.button("Discover Datasets"):
                     st.session_state.workflow_step = 3  # Move to search/results step
                     
                     # Persist config before potentially long search
-                    # save_config({
-                    #     'openrouter_api_key': st.session_state.openrouter_api_key,
-                    #     'huggingface_hub_token': st.session_state.huggingface_hub_token,
-                    #     'selected_model': st.session_state.selected_model
-                    # })
-
+                    _save_config_callback()
+                    
                     # Continue with search
                     proceed_with_search(st.session_state.final_keywords, user_intent, st.session_state.selected_model)
                 else:
@@ -841,34 +837,94 @@ elif st.session_state.workflow_step == 2:
             
             # Display criteria editing UI
             st.subheader("2a. Review and Confirm Evaluation Criteria")
-            st.write("You can edit, add, or remove criteria below:")
-            criteria_text = "\n".join(st.session_state.dynamic_criteria)
-            edited_criteria = st.text_area(
-                "Edit evaluation criteria (one per line):",
-                value=criteria_text,
-                height=150,
-                key='criteria_refinement_area'
-            )
             
-            if st.button("Confirm Criteria and Search"):
-                # Update criteria based on user edits
-                st.session_state.dynamic_criteria = [c.strip() for c in edited_criteria.split("\n") if c.strip()]
-                if not st.session_state.dynamic_criteria:
+            # Add helpful guidance
+            with st.expander("ℹ️ Tips for good evaluation criteria", expanded=False):
+                st.markdown("""
+                * **Be specific** - Criteria should be clear and specific to your research intent
+                * **Be measurable** - Each criterion should be something that can be evaluated objectively
+                * **Keep them concise** - One sentence per criterion works best
+                * **Include domain-specific factors** - Add criteria specific to your domain or task
+                """)
+
+            # Add current criteria to session state if not already there
+            if "current_criteria" not in st.session_state:
+                st.session_state.current_criteria = st.session_state.dynamic_criteria.copy()
+            elif st.session_state.workflow_step == 2 and not st.session_state.criteria_confirmed:
+                # This ensures that if we navigate back to this step or refresh,
+                # we see the most recently generated criteria
+                if "dynamic_criteria" in st.session_state and st.session_state.dynamic_criteria:
+                    st.session_state.current_criteria = st.session_state.dynamic_criteria.copy()
+            
+            # Function to update a criterion
+            def update_criterion(index, new_value):
+                st.session_state.current_criteria[index] = new_value
+            
+            # Function to add a new criterion
+            def add_new_criterion():
+                st.session_state.current_criteria.append("")
+                st.experimental_rerun()  # Refresh to show the new field
+            
+            # Function to remove a criterion
+            def remove_criterion(index):
+                if len(st.session_state.current_criteria) > 1:  # Don't allow removing the last criterion
+                    st.session_state.current_criteria.pop(index)
+                    st.experimental_rerun()  # Refresh to update the UI
+                else:
+                    st.warning("You must have at least one evaluation criterion.")
+            
+            # Display criteria with individual edit fields
+            st.write("### Evaluation Criteria")
+            st.write("Modify existing criteria or add new ones:")
+            
+            for i, criterion in enumerate(st.session_state.current_criteria):
+                col1, col2 = st.columns([10, 1])
+                with col1:
+                    # Create a unique key for each text input
+                    updated_criterion = st.text_input(
+                        f"Criterion {i+1}",
+                        value=criterion,
+                        key=f"criterion_{i}",
+                        help="Enter a clear, specific evaluation criterion",
+                        on_change=update_criterion,
+                        args=(i, st.session_state.get(f"criterion_{i}", criterion))
+                    )
+                    # st.session_state.current_criteria[i] = updated_criterion  # This is now handled by the on_change callback
+                
+                with col2:
+                    st.button("🗑️", key=f"delete_{i}", on_click=remove_criterion, args=(i,), help="Remove this criterion")
+                
+                # Add a subtle separator between criteria
+                if i < len(st.session_state.current_criteria) - 1:
+                    st.markdown("<hr style='margin: 5px 0; opacity: 0.3;'>", unsafe_allow_html=True)
+            
+            # Add button for new criterion
+            st.button("➕ Add Criterion", on_click=add_new_criterion, type="secondary")
+            
+            # Preview section
+            with st.expander("🔍 Preview All Criteria", expanded=False):
+                for i, criterion in enumerate(st.session_state.current_criteria):
+                    if criterion.strip():  # Only show non-empty criteria
+                        st.markdown(f"**{i+1}.** {criterion}")
+            
+            # Confirm button with more context
+            if st.button("Confirm Criteria and Search", type="primary"):
+                # Filter out empty criteria
+                valid_criteria = [c.strip() for c in st.session_state.current_criteria if c.strip()]
+                
+                if not valid_criteria:
                     st.warning("No criteria provided. Using default criterion.")
                     st.session_state.dynamic_criteria = ["Evaluate overall relevance to the user intent."]
                 else:
-                    st.success(f"Using {len(st.session_state.dynamic_criteria)} confirmed criteria for evaluation.")
+                    st.session_state.dynamic_criteria = valid_criteria
+                    st.success(f"Using {len(valid_criteria)} confirmed criteria for evaluation.")
                 
                 # Set the criteria confirmation flag and update workflow step
                 st.session_state.criteria_confirmed = True
                 st.session_state.workflow_step = 3  # Move to search/results step
                 
                 # Persist config before potentially long search
-                save_config({
-                    'openrouter_api_key': st.session_state.openrouter_api_key,
-                    'huggingface_hub_token': st.session_state.huggingface_hub_token,
-                    'selected_model': st.session_state.selected_model
-                })
+                _save_config_callback()
                 
                 # Continue with search
                 proceed_with_search(st.session_state.final_keywords, user_intent, st.session_state.selected_model)
@@ -879,11 +935,7 @@ elif st.session_state.workflow_step == 3:
     if not st.session_state.search_triggered:
         # If we're in step 3 but search isn't triggered yet, start the search
         # Ensure config is saved before starting
-        save_config({
-            'openrouter_api_key': st.session_state.openrouter_api_key,
-            'huggingface_hub_token': st.session_state.huggingface_hub_token,
-            'selected_model': st.session_state.selected_model
-        })
+        _save_config_callback()
         proceed_with_search(st.session_state.final_keywords, user_intent, st.session_state.selected_model)
     
     # The rest of the results display logic will run as normal when search_triggered is True
