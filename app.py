@@ -450,6 +450,37 @@ st.session_state.final_limit = st.sidebar.number_input(
 
 # --- Main Area ---
 # st.write("Enter your research intent below, configure API keys/settings in the sidebar, then click Discover.")
+
+# Add workflow step indicator
+if st.session_state.mode == "assistive" and st.session_state.workflow_step > 0:
+    steps = ["Intent", "Keywords", "Criteria", "Search & Results", "Report"]
+    current_step = min(st.session_state.workflow_step + 1, 4)  # +1 because step 0 is Intent input
+    
+    # Create progress indicator container with light gray background
+    progress_container = st.container()
+    with progress_container:
+        # Add a light gray background
+        st.markdown("---")
+        st.markdown("### Workflow Progress")
+        
+        # Create columns for each step
+        step_cols = st.columns(len(steps))
+        
+        # Fill each column with the appropriate step information
+        for i, (col, step) in enumerate(zip(step_cols, steps)):
+            with col:
+                if i < current_step:
+                    # Completed step
+                    st.success(step)
+                elif i == current_step:
+                    # Current step
+                    st.error(step)
+                else:
+                    # Pending step
+                    st.info(step)
+        
+        st.markdown("---")
+
 user_intent = st.text_area("Enter your research intent:",
                          height=100,
                          placeholder="e.g., Datasets for analyzing customer churn in the telecommunications sector",
@@ -461,6 +492,16 @@ user_intent = st.text_area("Enter your research intent:",
 # Display mode information before discovery button
 st.info(f"Current Mode: **{st.session_state.mode.capitalize()}**  \n"
         f"{'✅ Auto mode will execute all steps automatically without confirmation' if st.session_state.mode == 'auto' else '✅ Assistive mode will ask for confirmation at each step'}")
+
+# Add debugging expander
+with st.expander("🔍 Debug Info", expanded=False):
+    st.write("Current Workflow Step:", st.session_state.workflow_step)
+    st.write("Keywords Generated:", st.session_state.keywords_generated)
+    st.write("Keywords:", st.session_state.generated_keywords)
+    st.write("Search Triggered:", st.session_state.search_triggered)
+    st.write("Criteria Confirmed:", st.session_state.criteria_confirmed)
+    if st.session_state.error_message:
+        st.error(f"Error: {st.session_state.error_message}")
 
 # --- Example Intents --- 
 with st.expander("📋 Try an example intent", expanded=False):
@@ -617,6 +658,7 @@ if st.session_state.workflow_step == 0 and st.button("Discover Datasets"):
                     proceed_with_search(st.session_state.final_keywords, user_intent, st.session_state.selected_model)
                 else:
                     st.session_state.workflow_step = 1  # Move to keyword confirmation step in assistive mode
+                    st.rerun()  # Add rerun to refresh UI and show keyword confirmation step
             else:
                 st.warning("LLM did not generate valid keywords.")
                 st.session_state.keywords_generated = False
