@@ -81,7 +81,8 @@ def evaluate_dataset_with_llm(
     user_intent: str,
     dynamic_criteria: Union[List[str], str],
     evaluation_prompt_template: str, # Pass the template content directly
-    model: str = DEFAULT_MODEL
+    model: str = DEFAULT_MODEL,
+    researcher_profile: str = "No profile provided"
 ) -> Optional[EvaluatedMetadata]:
     """
     Analyzes raw Hugging Face dataset metadata using an LLM based on user intent AND
@@ -95,6 +96,7 @@ def evaluate_dataset_with_llm(
                           or a pre-formatted string representation (e.g., JSON list).
         evaluation_prompt_template: The string template for the evaluation prompt.
         model: The OpenRouter model string to use for analysis.
+        researcher_profile: Optional string containing the researcher's background and interests.
 
     Returns:
         A dictionary conforming to the LLM-generated parts of the EvaluatedMetadata 
@@ -130,7 +132,8 @@ def evaluate_dataset_with_llm(
     formatted_prompt = prompt_template.format(
         user_intent=user_intent,
         dynamic_criteria=dynamic_criteria_str,
-        raw_metadata=raw_metadata_str
+        raw_metadata=raw_metadata_str,
+        researcher_profile=researcher_profile
     )
 
     # --- Debugging: Print full prompt --- 

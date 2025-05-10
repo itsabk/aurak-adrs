@@ -3,42 +3,48 @@ You are a data science research analyst specializing in dataset discovery and ev
 CONTEXT:
 {report_context}
 
+RESEARCHER PROFILE:
+{researcher_profile}
+
 TASK:
-Generate a professional, data-driven report that synthesizes the dataset discovery findings into clear insights and recommendations, prioritizing depth and actionability in its insights.
+Generate a professional, data-driven report that synthesizes the dataset discovery findings into clear insights and recommendations, prioritizing depth and actionability in its insights. Consider the researcher's background and expertise throughout the analysis.
 
 REPORT STRUCTURE:
 1. EXECUTIVE SUMMARY
-   - Concisely summarize the user's research intent
+   - Concisely summarize the user's research intent and relevant background/expertise
    - Highlight key search parameters (keywords used)
    - Present major findings: number of datasets found, quality distribution, top matches
-   - Include 1-2 key actionable insights
+   - Include 1-2 key actionable insights, considering the researcher's domain expertise
 
 2. DISCOVERY PROCESS OVERVIEW
    - Outline the systematic approach: keyword generation → criteria development → search → evaluation
+   - Explain how the researcher's profile influenced dataset evaluation and ranking
    - Provide specific metrics: initial dataset count, final evaluation count, filtering criteria
    - Explain how the evaluation methodology ensured relevance and quality
 
 3. KEY FINDINGS & INSIGHTS
-   - Deeply analyze *significant* patterns among the top-ranked datasets (domains, task types, data structures). Connect these patterns to potential strengths or weaknesses for the user's specific intent.
-   - Identify 2-3 standout datasets with specific reasons for their high relevance, detailing how they meet key criteria exceptionally well.
-   - Assess overall alignment between available datasets and research criteria.
-   - Critically assess significant gaps or limitations in the *available data* relative to the *user's intent*.
+   - Deeply analyze *significant* patterns among the top-ranked datasets (domains, task types, data structures). Connect these patterns to potential strengths or weaknesses for the user's specific intent and expertise.
+   - Identify 2-3 standout datasets with specific reasons for their high relevance, detailing how they meet key criteria and align with the researcher's background.
+   - Assess overall alignment between available datasets and research criteria, considering domain expertise.
+   - Critically assess significant gaps or limitations in the *available data* relative to the *user's intent* and experience level.
 
 4. DATA LANDSCAPE ANALYSIS
    - **Important:** When discussing a chart from the context, insert its corresponding placeholder directly into the text where the chart should appear. Use the format `[CHART:chart_key]`. The available chart keys are: `relevance_scores`, `domain_counts`, `task_counts`, `license_counts`, `size_counts`, `score_vs_popularity`.
-   - Reference and interpret the 'Relevance Score Distribution' chart. Insert `[CHART:relevance_scores]` here.
-   - Analyze domain distribution patterns shown in the 'Dataset Domain Counts' chart. Insert `[CHART:domain_counts]` here.
-   - Interpret the 'Task Type Distribution' chart. Insert `[CHART:task_counts]` here.
+   - Reference and interpret the 'Relevance Score Distribution' chart, noting any correlation with researcher's domain. Insert `[CHART:relevance_scores]` here.
+   - Analyze domain distribution patterns shown in the 'Dataset Domain Counts' chart, highlighting alignment with researcher's expertise. Insert `[CHART:domain_counts]` here.
+   - Interpret the 'Task Type Distribution' chart in context of researcher's background. Insert `[CHART:task_counts]` here.
    - Discuss insights from the 'Score vs. Popularity' chart. Insert `[CHART:score_vs_popularity]` here.
    - Analyze the 'License Type Distribution' and 'Data Size Estimate Distribution' charts. Insert `[CHART:license_counts]` and `[CHART:size_counts]` respectively when discussing them.
    - Synthesize findings across charts: Are certain domains/tasks associated with higher scores, specific licenses, or particular sizes?
    - Identify potential data quality concerns or bias issues hinted at across the dataset collection or metadata analysis.
+   - Consider how the researcher's expertise might help address or mitigate identified issues.
 
 5. CONCLUSION & RECOMMENDATIONS
-   - Synthesize the *most critical* insights derived from the analysis.
-   - Provide 3-5 *highly specific* and *directly actionable* next steps for the user, clearly linked to the preceding insights and analysis. Focus recommendations on overcoming identified limitations or leveraging key dataset strengths.
-   - Suggest potential dataset combinations or modifications that might better serve the research intent.
-   - Recommend follow-up analyses if appropriate, explaining their potential value.
+   - Synthesize the *most critical* insights derived from the analysis, considering both the data landscape and researcher's background.
+   - Provide 3-5 *highly specific* and *directly actionable* next steps for the user, clearly linked to the preceding insights and leveraging their domain expertise.
+   - Suggest potential dataset combinations or modifications that might better serve the research intent, taking into account the researcher's technical capabilities.
+   - Recommend follow-up analyses if appropriate, explaining their potential value and how they align with the researcher's skills.
+   - If applicable, suggest ways the researcher's expertise could be leveraged to enhance or customize the datasets.
 
 FORMAT REQUIREMENTS:
 - Use clear, professional Markdown formatting
@@ -49,4 +55,4 @@ FORMAT REQUIREMENTS:
 - Avoid overly generic statements; be specific in your analysis and recommendations.
 - Focus on synthesizing information rather than repeating raw data
 
-IMPORTANT: Crucially, your report must deliver genuine analytical value by highlighting non-obvious patterns, connections, and implications relevant to the user's goal, going beyond a simple summary of the data.
+IMPORTANT: Crucially, your report must deliver genuine analytical value by highlighting non-obvious patterns, connections, and implications relevant to the user's goal and expertise, going beyond a simple summary of the data.

@@ -1,9 +1,12 @@
-You are an expert assistant specialized in analyzing Hugging Face dataset metadata to determine its suitability for a user's specific research intent, based on pre-defined criteria.
+You are an expert assistant specialized in analyzing Hugging Face dataset metadata to determine its suitability for a user's specific research intent and profile, based on pre-defined criteria.
 
-Your task is to evaluate a given dataset based on the user's intent, a specific set of evaluation criteria derived from that intent, and the dataset's raw metadata.
+Your task is to evaluate a given dataset based on the user's intent, their researcher profile (if provided), a specific set of evaluation criteria derived from that intent, and the dataset's raw metadata.
 
 **User Intent:**
 {user_intent}
+
+**Researcher Profile:**
+{researcher_profile}
 
 **Evaluation Criteria (Derived from Intent):**
 ```json
@@ -17,7 +20,7 @@ Your task is to evaluate a given dataset based on the user's intent, a specific 
 
 **Instructions:**
 
-1.  **Understand Context:** Review the **User Intent** and the provided **Evaluation Criteria**. These criteria are the primary lens through which you must judge the dataset.
+1.  **Understand Context:** Review the **User Intent**, **Researcher Profile** (if provided), and the provided **Evaluation Criteria**. These criteria, along with the researcher's background and expertise, are the primary lens through which you must judge the dataset.
 2.  **Analyze Metadata:** Thoroughly examine the **Dataset Raw Metadata**, paying close attention to `description`, `tags`, `cardData` (especially `dataset_info`, `license`, `configs`), `downloads`, `likes`, and any other relevant fields needed to address the criteria.
 3.  **Extract & Infer Key Fields:** Based on your analysis, extract or infer the following standard information. If a field cannot be reliably determined, use `null`.
     *   `clear_summary`: A concise summary (1-2 sentences) of the dataset's purpose and content.
@@ -28,13 +31,14 @@ Your task is to evaluate a given dataset based on the user's intent, a specific 
     *   `data_quality_hints`: List any hints about data quality, collection methods, known limitations, or annotations mentioned in the metadata.
     *   `potential_biases_mentioned`: List any potential biases explicitly mentioned or strongly implied.
     *   `license_type`: The primary license identifier (e.g., 'apache-2.0', 'mit', 'cc-by-sa-4.0', 'unknown').
-4.  **Evaluate Against Criteria:** Critically assess how well the dataset meets EACH of the provided **Evaluation Criteria**. Consider:
+4.  **Evaluate Against Criteria and Profile:** Critically assess how well the dataset meets EACH of the provided **Evaluation Criteria** and aligns with the researcher's background and expertise. Consider:
     *   Direct evidence in the metadata supporting or refuting each criterion.
     *   Infer suitability based on available information (e.g., inferring task alignment from features).
+    *   Assess alignment with researcher's domain expertise and research interests when profile is provided.
     *   Use popularity (downloads/likes) only as a minor tie-breaker if criteria are equally met.
-5.  **Assign Score & Reasoning Based on Criteria:**
-    *   `relevance_score`: Assign a numerical score between 0.0 (meets few/none criteria) and 1.0 (meets most/all key criteria well) based *strictly* on how well the dataset satisfies the **Evaluation Criteria** list.
-    *   `reasoning`: Provide a brief (1-3 sentences) explanation for the assigned score, explicitly referencing how the dataset performed against the key **Evaluation Criteria**. Mention which criteria were met well and which were not.
+5.  **Assign Score & Reasoning Based on Criteria and Profile:**
+    *   `relevance_score`: Assign a numerical score between 0.0 (meets few/none criteria) and 1.0 (meets most/all key criteria well) based on how well the dataset satisfies both the **Evaluation Criteria** list and aligns with the researcher's profile when provided.
+    *   `reasoning`: Provide a brief (2-3 sentences) explanation for the assigned score, explicitly referencing how the dataset performed against the key **Evaluation Criteria** and its alignment with the researcher's background/expertise. Mention which criteria were met well and which were not.
 
 **Output Format:**
 
@@ -53,8 +57,8 @@ Respond ONLY with a single valid JSON object containing the extracted fields, th
   "potential_biases_mentioned": ["Primarily English reviews."],
   "license_type": "apache-2.0",
   "relevance_score": 0.90,
-  "reasoning": "Excellent match to criteria: Contains required 'text' and 'label' columns, description confirms sentiment task, size is adequate, and license is permissive. Data source is noted."
+  "reasoning": "Excellent match to criteria: Contains required 'text' and 'label' columns, description confirms sentiment task, size is adequate, and license is permissive. Strong alignment with researcher's NLP background and experience in sentiment analysis projects. Data source and collection method are well documented."
 }}
 ```
 
-Now, analyze the provided intent, criteria, and metadata, and generate the JSON output. 
+Now, analyze the provided intent, criteria, profile, and metadata, and generate the JSON output. 

@@ -132,20 +132,22 @@ The system provides several configuration options through the Streamlit sidebar:
 
 1. **API Keys**:
 
-   - OpenRouter API Key (required)
-   - Hugging Face Hub Token (optional, increases rate limits)
+   - OpenRouter API key (required)
+   - Hugging Face Hub token (optional, increases rate limits)
 
 2. **LLM Model**: The OpenRouter model identifier to use for LLM interactions
 
-3. **Operating Mode**: "Auto" or "Assistive"
+3. **Researcher Profile**: Optional text area to provide research background and domain expertise, which helps bias dataset recommendations toward the researcher's interests and expertise
 
-4. **Search Limits**:
+4. **Operating Mode**: "Auto" or "Assistive"
+
+5. **Search Limits**:
 
    - Max Keywords to Search (1-10)
    - Fetch Limit per Keyword (10-100)
    - Final Results Limit (10-200)
 
-5. **Prompt Templates**: Editable templates for all LLM interactions
+6. **Prompt Templates**: Editable templates for all LLM interactions
 
 ## Metadata Schema
 
