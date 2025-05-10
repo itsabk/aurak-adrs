@@ -14,7 +14,9 @@ ADRS is built on a modular architecture with the following key components:
 
 4. **Metadata Schema (src/metadata_schema.py)**: Defines the standardized structure for dataset metadata and evaluation results.
 
-5. **Prompt Templates (prompts/...)**: Text files containing prompt templates for different LLM interactions.
+5. **Advanced Search Schema (src/advanced_search_schema.py)**: Defines structures and options for advanced search capabilities and filtering.
+
+6. **Prompt Templates (prompts/...)**: Text files containing prompt templates for different LLM interactions.
 
 ## Operating Modes
 
@@ -24,49 +26,51 @@ ADRS offers two distinct operating modes to accommodate different user preferenc
 
 In Auto mode, the system executes all steps automatically without user intervention:
 
-1. User enters their research intent
-2. System generates keywords using LLM
-3. System generates evaluation criteria using LLM
+1. User enters their research intent and optional advanced search preferences
+2. System generates keywords using LLM (incorporating advanced search preferences)
+3. System generates evaluation criteria using LLM (incorporating advanced search preferences)
 4. System searches Hugging Face Hub for datasets using keywords
-5. System evaluates datasets using LLM
-6. System displays sorted results
-7. System automatically generates visualizations and report
+5. System applies strict filters with automatic expansion if needed
+6. System evaluates datasets using LLM (considering preference filters)
+7. System displays sorted results
+8. System automatically generates visualizations and report
 
 ### Assistive Mode
 
 In Assistive mode, the system requires user confirmation at key steps:
 
-1. User enters their research intent
-2. System generates keywords using LLM
+1. User enters their research intent and optional advanced search preferences
+2. System generates keywords using LLM (incorporating advanced search preferences)
 3. **User reviews and confirms/edits keywords**
-4. System generates evaluation criteria using LLM
+4. System generates evaluation criteria using LLM (incorporating advanced search preferences)
 5. **User reviews and confirms/edits criteria**
 6. System searches Hugging Face Hub for datasets using confirmed keywords
-7. System evaluates datasets using LLM
-8. System displays sorted results
-9. **User can optionally generate visualizations and report**
+7. System applies strict filters with automatic expansion if needed
+8. System evaluates datasets using LLM (considering preference filters)
+9. System displays sorted results
+10. **User can optionally generate visualizations and report**
 
 ## Workflow Details
 
 ### 1. User Intent Processing
 
-The workflow begins with the user providing a research intent in natural language. This intent is used as the foundation for all subsequent steps.
+The workflow begins with the user providing a research intent in natural language and optional advanced search preferences. This forms the foundation for all subsequent steps.
 
 ### 2. Keyword Generation
 
-The system uses the LLM to extract relevant search keywords from the user's intent:
+The system uses the LLM to extract relevant search keywords from the user's intent and advanced search preferences:
 
 - **Prompt Template**: `prompts/generate_keywords.txt`
-- **Input**: User's research intent
+- **Input**: User's research intent and advanced search preferences
 - **Output**: Comma-separated list of relevant keywords
 - **Implementation**: `get_llm_response()` in `src/llm_interaction.py`
 
 ### 3. Evaluation Criteria Generation
 
-The system uses the LLM to generate evaluation criteria based on the user's intent:
+The system uses the LLM to generate evaluation criteria based on the user's intent and advanced search preferences:
 
 - **Prompt Template**: `prompts/generate_criteria.txt`
-- **Input**: User's research intent
+- **Input**: User's research intent and advanced search preferences
 - **Output**: JSON list of evaluation criteria
 - **Implementation**: `get_llm_response()` in `src/llm_interaction.py`
 
@@ -83,7 +87,25 @@ The system searches the Hugging Face Hub using the generated/confirmed keywords:
   - `final_result_limit`: Maximum total datasets to return (default: 100)
 - **Output**: List of raw dataset metadata from Hugging Face Hub
 
-### 5. Dataset Evaluation
+### 5. Advanced Filtering
+
+The system applies advanced search filters to datasets before evaluation:
+
+- **Function**: `should_include_dataset()` in `app.py`
+- **Filter Types**:
+  - **Strict Filters**: Applied programmatically to exclude non-matching datasets
+    - Data Size: Filters by size category (Small, Medium, Large, etc.)
+    - Time Range: Filters by creation/update time range
+  - **Preference Filters**: Passed to LLM as context for ranking but don't exclude datasets
+    - Domain: User-selected domains
+    - Task Type: User-selected ML tasks
+    - License: User-selected licenses
+    - Quality Criteria: User-selected quality attributes
+    - Languages: User-selected languages
+- **Automatic Expansion**: If fewer than 5 datasets match strict filters, the search is automatically expanded
+- **Implementation**: Uses a threshold-based approach with a `search_expanded` flag to inform the LLM when ranking
+
+### 6. Dataset Evaluation
 
 The system evaluates each dataset using the LLM:
 
@@ -91,14 +113,15 @@ The system evaluates each dataset using the LLM:
 - **Function**: `evaluate_dataset_with_llm()` in `src/llm_interaction.py`
 - **Inputs**:
   - `raw_metadata`: Raw dataset metadata from Hugging Face Hub
-  - `user_intent`: User's research intent
+  - `user_intent`: User's research intent with advanced search context
   - `dynamic_criteria`: Generated/confirmed evaluation criteria
   - `evaluation_prompt_template`: Template for evaluation prompt
   - `model`: LLM model to use
+  - `researcher_profile`: Optional user research background/expertise
 - **Output**: Evaluated metadata with standardized fields and relevance score
 - **Concurrent Execution**: Uses `ThreadPoolExecutor` for parallel processing
 
-### 6. Results Display
+### 7. Results Display
 
 The system displays the evaluated datasets in a sortable table with:
 
@@ -107,7 +130,7 @@ The system displays the evaluated datasets in a sortable table with:
 - LLM-generated reasoning for the score
 - Standardized metadata fields (summary, domain, task type, etc.)
 
-### 7. Report Generation
+### 8. Report Generation
 
 The system generates visualizations and a comprehensive report:
 
@@ -121,10 +144,66 @@ The system generates visualizations and a comprehensive report:
 - **Report Prompt Template**: `prompts/generate_report.txt`
 - **Inputs**:
   - User intent
+  - Advanced search preferences
   - Keywords used
   - Evaluation criteria
   - Summary of evaluated datasets
 - **Output**: Markdown-formatted report analyzing the datasets and referencing the visualizations
+
+## Advanced Search Implementation
+
+The advanced search functionality is implemented through several components:
+
+### 1. Schema Definition
+
+The `src/advanced_search_schema.py` file defines:
+
+- **Predefined Options**: Lists of common domains, tasks, licenses, quality criteria, languages, etc.
+- **Default Options**: Initial values for search options
+- **AdvancedSearchOptions**: TypedDict defining the structure of advanced search options
+
+### 2. UI Implementation
+
+The advanced search UI in `app.py`:
+
+- **Expander UI**: Collapsible section to keep UI clean
+- **Visual Distinction**: Green border for preference filters, orange for strict filters
+- **Custom Input**: Text input fields with "Add" buttons for each filter category
+- **Multiselect Controls**: Select multiple options within each filter category
+- **Reset Button**: Restores all filters to defaults
+
+### 3. State Management
+
+Advanced search state is managed through:
+
+- **Session State**: Stores current filter selections in `st.session_state.advanced_search_options`
+- **Helper Functions**:
+  - `initialize_advanced_search_state()`: Sets up initial state
+  - `handle_custom_input()`: Manages adding custom filter options
+  - `reset_advanced_search()`: Restores defaults
+  - `create_multiselect_with_custom()`: Creates UI components for filters
+
+### 4. Filtering Logic
+
+The filtering system uses a balanced approach:
+
+- **Strict Filtering**:
+
+  - Implemented in `should_include_dataset()` function
+  - Only applies data size and time range filters strictly
+  - Uses direct metadata matching with case-insensitive comparison
+  - Automatic expansion if fewer than 5 datasets match (`MIN_DATASETS_THRESHOLD`)
+
+- **Preference Context**:
+
+  - Implemented in `format_advanced_search_context()` function
+  - Converts selected preferences to a formatted string
+  - Passed to LLM for consideration during evaluation
+  - Enhanced importance when search is expanded
+
+- **LLM Integration**:
+  - Enhanced user intent passed to LLM with special formatting when search is expanded
+  - Preference context included in all LLM prompts (keywords, criteria, evaluation, report)
 
 ## Configuration Options
 
@@ -178,11 +257,10 @@ class EvaluatedMetadata(TypedDict, total=False):
 
 The system uses several prompt templates stored in the `prompts/` directory:
 
-1. **`generate_keywords.txt`**: Extracts search keywords from user intent
-2. **`generate_criteria.txt`**: Creates evaluation criteria based on user intent
+1. **`generate_keywords.txt`**: Extracts search keywords from user intent and advanced search preferences
+2. **`generate_criteria.txt`**: Creates evaluation criteria based on user intent and advanced search preferences
 3. **`evaluate_dataset.txt`**: Evaluates datasets against criteria and standardizes metadata
-4. **`generate_report.txt`**: Synthesizes findings into a comprehensive report
-5. **`standardize_metadata.txt`**: Template for metadata standardization
+4. **`generate_report.txt`**: Synthesizes findings into a comprehensive report considering advanced search preferences
 
 ## Error Handling
 
@@ -192,6 +270,7 @@ The system includes several error handling mechanisms:
 2. **LLM Response Parsing**: Robust parsing of LLM outputs with fallbacks
 3. **Exception Handling**: Comprehensive try/except blocks with user-friendly error messages
 4. **Evaluation Errors Tracking**: Separate list for tracking and displaying evaluation errors
+5. **Filter Expansion**: Automatically expands search if too few results match strict filters
 
 ## Performance Considerations
 
@@ -199,12 +278,14 @@ The system includes several error handling mechanisms:
 2. **Progress Tracking**: Provides progress bars and status updates during evaluation
 3. **Rate Limiting**: Respects Hugging Face Hub API rate limits
 4. **Memory Management**: Efficient handling of dataset metadata
+5. **Smart Filtering**: Balances between strict filtering and preference-based ranking to ensure adequate results
 
 ## Security Considerations
 
 1. **API Key Storage**: API keys can be stored in `.env` file or entered directly in the UI
 2. **No Data Persistence**: Does not store user data or API keys between sessions
 3. **Input Validation**: Validates user inputs before processing
+4. **Secure State Management**: Uses Streamlit's session state for secure state management
 
 ## Current Limitations
 
@@ -213,13 +294,17 @@ The system includes several error handling mechanisms:
 3. No authentication or user management
 4. No persistent storage of results
 5. Limited to Hugging Face Hub datasets
+6. Advanced search filters are not directly editable after initial setup (requires reset and reconfiguration)
 
 ## Future Enhancements
 
 1. Direct download and analysis of selected datasets
 2. Compatibility assessment for merging multiple datasets
-3. Custom filtering and sorting options
+3. Custom filtering and sorting options for result tables
 4. Support for additional dataset repositories beyond Hugging Face
 5. Export options for reports and visualizations
 6. User authentication and result persistence
 7. More advanced visualization options
+8. Enhanced collaborative research features
+9. Improved dataset usage suggestions based on researcher profiles
+10. Saved filter presets and sharing capabilities

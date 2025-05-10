@@ -60,38 +60,68 @@ The ADRS interface consists of:
 2. Enter your **OpenRouter API Key** (required)
 3. Optionally enter your **Hugging Face Hub Token** (increases API rate limits)
 4. Select a **LLM Model** or use the default
-5. Choose the **Operating Mode**:
+5. Optionally add your **Researcher Profile** to personalize recommendations
+6. Choose the **Operating Mode**:
    - **Auto**: Fully automated workflow without user intervention
    - **Assistive**: Step-by-step workflow with user confirmation at key steps
-6. Adjust **Search Limits** if needed:
+7. Adjust **Search Limits** if needed:
    - **Max Keywords to Search**: Number of keywords to use (1-10)
    - **Fetch Limit per Keyword**: Datasets per keyword search (10-100)
    - **Final Results Limit**: Total datasets to return (10-200)
-7. Close the sidebar by clicking anywhere in the main area or the "<" icon
+8. Close the sidebar by clicking anywhere in the main area or the "<" icon
 
 ### Step 2: Enter Your Research Intent
 
 1. In the main text area, enter a description of the datasets you're looking for
    - Be specific about the domain, task, and any special requirements
    - Example: "Datasets for analyzing customer churn in the telecommunications sector"
-2. Alternatively, click one of the example buttons below the text area to use a pre-defined intent
+2. Alternatively, click one of the example buttons below the text area to auto-fill with a pre-defined intent
 
-### Step 3: Start the Discovery Process
+### Step 3: Specify Advanced Search Options (Optional)
+
+1. Click the "🔍 Advanced Search Options" expander to open the advanced search panel
+2. Set your preferences using the two types of filters:
+
+   **Preference Filters** (green border):
+
+   - These inform the LLM of your preferences but don't exclude datasets
+   - Options include:
+     - **Domain**: Select domains like NLP, Computer Vision, Finance, etc.
+     - **Task Type**: Select ML tasks like Classification, Object Detection, etc.
+     - **License**: Specify license preferences like MIT, Apache, etc.
+     - **Quality Criteria**: Select quality requirements like Well-Documented, Clean, etc.
+     - **Languages**: Specify language preferences like English, Spanish, etc.
+   - For each, you can:
+     - Select from predefined options
+     - Add custom values using the "Add" button
+
+   **Strict Filters** (orange border):
+
+   - These will exclude datasets that don't match the criteria
+   - Options include:
+     - **Data Size**: Filter by size categories (Small, Medium, Large, etc.)
+     - **Time Range**: Filter by creation/update time range
+   - Note: If too few datasets (<5) match strict filters, the search will automatically expand
+
+3. Use the "Reset Advanced Options" button to clear all filters if needed
+
+### Step 4: Start the Discovery Process
 
 Click the **Discover Datasets** button to start the process.
 
-### Step 4: Follow the Workflow
+### Step 5: Follow the Workflow
 
 #### In Auto Mode:
 
 The system will automatically:
 
-1. Generate keywords
-2. Generate evaluation criteria
+1. Generate keywords (incorporating advanced search preferences)
+2. Generate evaluation criteria (incorporating advanced search preferences)
 3. Search Hugging Face Hub
-4. Evaluate datasets
-5. Display results
-6. Generate visualizations and report
+4. Apply strict filters (with automatic expansion if needed)
+5. Evaluate datasets (considering preference filters)
+6. Display results
+7. Generate visualizations and report
 
 You'll see progress indicators as each step completes.
 
@@ -99,26 +129,27 @@ You'll see progress indicators as each step completes.
 
 1. **Review Keywords**:
 
-   - The system will generate keywords based on your intent
+   - The system will generate keywords based on your intent and preferences
    - Review the keywords and edit them if needed
    - Click "Confirm Keywords and Continue"
 
 2. **Review Evaluation Criteria**:
 
-   - The system will generate evaluation criteria based on your intent
+   - The system will generate evaluation criteria based on your intent and preferences
    - Review the criteria and edit them if needed
    - Click "Confirm Criteria and Search"
 
 3. **Wait for Search and Evaluation**:
 
    - The system will search Hugging Face Hub and evaluate datasets
+   - You'll see messages if strict filters are applied or expanded
    - Progress indicators will show you the status
 
 4. **Review Results**:
    - Explore the ranked datasets in the results table
    - Click "Generate Full Report & Visualizations" to create the report
 
-### Step 5: Explore the Results
+### Step 6: Explore the Results
 
 #### Ranked Datasets Table
 
@@ -149,6 +180,37 @@ The report section includes:
 - A comprehensive text report analyzing the datasets and referencing the visualizations
 
 ## Advanced Usage
+
+### Using Advanced Search Effectively
+
+For best results when using advanced search:
+
+1. **Start Broad**: Initially use fewer filters to ensure you get enough results
+2. **Preference vs. Strict Filters**:
+   - Use preference filters (green) for most requirements to inform ranking
+   - Only use strict filters (orange) for critical requirements like size or recency
+3. **Custom Values**: Add custom values when predefined options don't match your needs
+4. **Combining Filters**: Multiple selected options within a filter are treated as OR conditions
+5. **Filter Expansion**: If you see a message about "expanding search," it means too few datasets matched your strict filters
+
+### Example Advanced Search Scenarios
+
+**Scenario 1: Finding recent financial datasets**
+
+- Domain (preference): Finance
+- Time Range (strict): Last 2 years
+
+**Scenario 2: Finding well-documented multilingual NLP datasets**
+
+- Domain (preference): NLP
+- Languages (preference): Select multiple languages
+- Quality Criteria (preference): Well-Documented, Cleaned
+
+**Scenario 3: Finding compact image datasets for mobile applications**
+
+- Domain (preference): Computer Vision
+- Task Type (preference): Image Classification
+- Data Size (strict): Small (<1k samples)
 
 ### Editing Prompt Templates
 
@@ -193,13 +255,20 @@ To save your results:
 4. **"No datasets were found"**:
 
    - Try different keywords or a broader intent
+   - Reduce the number of strict filters
    - Increase the search limits in the sidebar
    - Consider using a Hugging Face Hub token for higher rate limits
 
 5. **"Error evaluating dataset"**:
+
    - Individual dataset evaluation errors are displayed in the "View Evaluation Issues" section
    - These are usually due to rate limits or parsing issues
    - The system will continue with the datasets that were successfully evaluated
+
+6. **"Only X datasets match your strict filters. Expanding search..."**:
+   - This is not an error but a message indicating the system automatically expanded your search
+   - Your preferences will still be used for ranking
+   - To get more focused results, try adjusting your research intent or using different preference filters
 
 ### Getting Help
 

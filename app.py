@@ -5,6 +5,12 @@ import litellm
 from src.llm_interaction import get_llm_response, evaluate_dataset_with_llm, DEFAULT_MODEL
 from src.hf_search import search_datasets
 from src.metadata_schema import EvaluatedMetadata
+from src.advanced_search_schema import (
+    AdvancedSearchOptions, get_default_options,
+    PREDEFINED_DOMAINS, PREDEFINED_TASKS, DATA_SIZE_OPTIONS,
+    PREDEFINED_LICENSES, QUALITY_CRITERIA, PREDEFINED_LANGUAGES,
+    TIME_RANGES
+)
 import string
 import html # Import the html module for escaping
 import os
@@ -18,6 +24,127 @@ import time # For potential UI updates/sleeps
 import re # Import re for regular expressions
 import streamlit.components.v1 as components
 from streamlit_local_storage import LocalStorage # Import correct class
+
+# --- Advanced Search Helper Functions ---
+def initialize_advanced_search_state():
+    """Initialize advanced search options in session state if not present."""
+    if 'advanced_search_options' not in st.session_state:
+        st.session_state.advanced_search_options = get_default_options()
+
+def handle_custom_input(field_name: str, custom_value: str):
+    """
+    Handle adding custom values to the advanced search options.
+    Returns True if custom value was added, False otherwise.
+    """
+    if not custom_value or custom_value.strip() == "":
+        return False
+        
+    # Clean up the input value
+    clean_value = custom_value.strip()
+    
+    # Initialize custom field if not exists
+    custom_field = f"custom_{field_name}"
+    if custom_field not in st.session_state.advanced_search_options:
+        st.session_state.advanced_search_options[custom_field] = []
+    
+    # Check if already exists
+    if clean_value in st.session_state.advanced_search_options[custom_field]:
+        return False
+        
+    # Add to custom options
+    st.session_state.advanced_search_options[custom_field].append(clean_value)
+    
+    # Initialize selection field if not exists
+    if field_name not in st.session_state.advanced_search_options:
+        st.session_state.advanced_search_options[field_name] = []
+    
+    # Add to current selection and ensure default is removed
+    current_selection = st.session_state.advanced_search_options[field_name].copy()
+    
+    # If default option ("All X") is in the list, remove it
+    if field_name == "domains" and "All Domains" in current_selection:
+        current_selection.remove("All Domains")
+    elif field_name == "tasks" and "All Tasks" in current_selection:
+        current_selection.remove("All Tasks")
+    elif field_name == "licenses" and "All Licenses" in current_selection:
+        current_selection.remove("All Licenses")
+    elif field_name == "quality_criteria" and "All Quality Levels" in current_selection:
+        current_selection.remove("All Quality Levels")
+    elif field_name == "languages" and "All Languages" in current_selection:
+        current_selection.remove("All Languages")
+    elif field_name == "data_sizes" and "Any Size" in current_selection:
+        current_selection.remove("Any Size")
+    
+    # Add the new custom value
+    current_selection.append(clean_value)
+    
+    # Update the selection
+    st.session_state.advanced_search_options[field_name] = current_selection
+    
+    return True
+
+def reset_advanced_search():
+    """Reset advanced search options to defaults."""
+    st.session_state.advanced_search_options = get_default_options()
+
+def create_multiselect_with_custom(
+    label: str,
+    options: List[str],
+    field_name: str,
+    help_text: str = "",
+    placeholder: str = "Add custom..."
+):
+    """Create a multiselect with custom input option."""
+    # Get the default option (first option in the list)
+    default_option = options[0]
+    
+    # Ensure the field is initialized in session state
+    if field_name not in st.session_state.advanced_search_options:
+        st.session_state.advanced_search_options[field_name] = [default_option]
+    
+    # Get all available options (predefined + custom)
+    all_options = options + st.session_state.advanced_search_options.get(f"custom_{field_name}", [])
+    
+    # Create the main multiselect
+    selected = st.multiselect(
+        label,
+        all_options,
+        default=st.session_state.advanced_search_options.get(field_name, [default_option]),
+        help=help_text
+    )
+    
+    # Handle empty selection - restore default
+    if not selected:
+        selected = [default_option]
+    # Handle default option deselection - if there are specific options, remove the default
+    elif default_option in selected and len(selected) > 1:
+        selected = [opt for opt in selected if opt != default_option]
+    
+    # Update session state with a new list (not in-place modification)
+    st.session_state.advanced_search_options[field_name] = selected.copy()
+    
+    # Create the custom input field with better column layout
+    col1, col2 = st.columns([4, 1])
+    with col1:
+        custom_value = st.text_input(
+            f"Custom {label}",
+            key=f"custom_{field_name}_input",
+            placeholder=placeholder
+        )
+    with col2:
+        add_clicked = st.button("Add", key=f"add_{field_name}_btn")
+        
+    # Handle adding custom value
+    if add_clicked:
+        if handle_custom_input(field_name, custom_value):
+            st.success(f"Added custom {label.lower()}: {custom_value}")
+            # Clear the input field by rerunning
+            st.rerun()
+        else:
+            if custom_value.strip() == "":
+                st.warning(f"Please enter a value for custom {label.lower()}")
+            else:
+                st.info(f"'{custom_value}' is already in the list")
 
 # --- Disable LiteLLM background logging to prevent thread pool conflicts ---
 litellm.disable_streaming_logging = True
@@ -84,35 +211,81 @@ def proceed_with_search(keywords, user_intent, selected_model):
         # ---> Step 4: Integrated LLM Evaluation (using criteria) <--- #
         if st.session_state.datasets:
             st.subheader("4. Evaluating Datasets with LLM (using confirmed criteria)...")
+            
+            # Apply advanced search filters before LLM evaluation
+            filtered_datasets = []
+            for dataset in st.session_state.datasets:
+                # Only process if passes basic filters
+                if should_include_dataset(dataset, st.session_state.advanced_search_options):
+                    filtered_datasets.append(dataset)
+            
+            # Check if we have enough datasets after filtering
+            MIN_DATASETS_THRESHOLD = 5  # Minimum number of datasets to proceed with
+            if len(filtered_datasets) < MIN_DATASETS_THRESHOLD:
+                st.warning(f"Only {len(filtered_datasets)} datasets match your strict filters. Expanding search to include more datasets...")
+                # If too few datasets, use all datasets
+                filtered_datasets = st.session_state.datasets
+                # Set flag to indicate search was expanded (for LLM prioritization)
+                st.session_state.search_expanded = True
+                st.info(f"Expanded to {len(filtered_datasets)} datasets. The LLM will prioritize your preferences during ranking.")
+            else:
+                # Search was not expanded
+                st.session_state.search_expanded = False
+                st.success(f"Found {len(filtered_datasets)} datasets matching your filters.")
+
+            if not filtered_datasets:
+                st.warning("No datasets match your search criteria. Try adjusting your filters or search keywords.")
+                return
+            
             # Create a map of raw dataset ID to its full data for easy lookup
-            raw_datasets_map = {d.get('id'): d for d in st.session_state.datasets if d.get('id')}
+            raw_datasets_map = {d.get('id'): d for d in filtered_datasets if d.get('id')}
             
             llm_model_to_use = selected_model if selected_model else DEFAULT_MODEL
-            total_datasets = len(st.session_state.datasets)
+            total_datasets = len(filtered_datasets)
             status_text = st.empty()
-            progress_bar = st.progress(0.0) # Initialize progress bar
+            progress_bar = st.progress(0.0)
             status_text.text(f"Starting evaluation for {total_datasets} datasets using confirmed criteria...")
 
             # Use ThreadPoolExecutor for concurrency
-            MAX_WORKERS = 10 # Adjust based on API rate limits and desired concurrency
+            MAX_WORKERS = 10
             processed_count = 0
             futures_to_dataset = {}
+            
+            # Prepare advanced search context for LLM
+            advanced_search_context = format_advanced_search_context(st.session_state.advanced_search_options)
+            
+            # Format user intent with priorities based on if the search was expanded
+            if 'search_expanded' in st.session_state and st.session_state.search_expanded:
+                enhanced_user_intent = f"""
+{user_intent}
+
+IMPORTANT - SEARCH PREFERENCES:
+{advanced_search_context}
+
+NOTE: These preferences should be prioritized during ranking but were not used as strict filters to ensure adequate results.
+"""
+            else:
+                enhanced_user_intent = f"""
+{user_intent}
+
+SEARCH PREFERENCES:
+{advanced_search_context}
+"""
             
             with st.spinner(f"Sending {total_datasets} datasets to LLM for evaluation based on your intent (max {MAX_WORKERS} concurrent requests)..."):
                 with concurrent.futures.ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
                     # Submit all tasks
-                    for dataset_raw in st.session_state.datasets:
+                    for dataset_raw in filtered_datasets:
                         future = executor.submit(
-                            evaluate_dataset_with_llm, # Use new function
+                            evaluate_dataset_with_llm,
                             raw_metadata=dataset_raw, 
-                            user_intent=user_intent, # Pass user intent
-                            dynamic_criteria=st.session_state.dynamic_criteria, # Pass confirmed criteria
-                            # Pass prompt template content
+                            user_intent=enhanced_user_intent,
+                            dynamic_criteria=st.session_state.dynamic_criteria,
                             evaluation_prompt_template=st.session_state.evaluation_prompt_content,
                             model=llm_model_to_use,
                             researcher_profile=st.session_state.get('researcher_profile', 'No profile provided')
                         )
-                        futures_to_dataset[future] = dataset_raw # Map future back to original data
+                        futures_to_dataset[future] = dataset_raw
 
                     # Process results as they complete
                     for i, future in enumerate(concurrent.futures.as_completed(futures_to_dataset)):
@@ -122,15 +295,10 @@ def proceed_with_search(keywords, user_intent, selected_model):
                             llm_evaluation_result = future.result() 
                             
                             if llm_evaluation_result:
-                                # Result contains LLM fields (summary, score, etc.)
-                                # Now, add the essential non-LLM fields
                                 evaluated_metadata = llm_evaluation_result.copy()
-                                
-                                dataset_id = dataset_raw.get('id', 'N/A') # Get ID from the *raw* data
                                 evaluated_metadata['id'] = dataset_id
                                 evaluated_metadata['url'] = f"https://huggingface.co/datasets/{dataset_id}"
                                 
-                                # Add raw metrics from original data
                                 raw_data = raw_datasets_map.get(dataset_id)
                                 if raw_data:
                                     evaluated_metadata['downloads'] = raw_data.get('downloads')
@@ -139,60 +307,181 @@ def proceed_with_search(keywords, user_intent, selected_model):
                                     evaluated_metadata['downloads'] = 0
                                     evaluated_metadata['likes'] = 0
                                 
-                                # Append the completed record
                                 st.session_state.evaluated_datasets.append(evaluated_metadata) 
                             else:
-                                # LLM function returned None (e.g., parsing error)
                                 err_msg = f"⚠️ Dataset {dataset_id}: LLM evaluation/parsing failed."
                                 st.session_state.evaluation_errors.append(err_msg)
                                 st.toast(err_msg, icon="⚠️")
                         except Exception as exc:
-                            # Exception raised during the execution of the future OR processing the result
-                            dataset_id = dataset_raw.get('id', 'N/A') # Need ID for message
+                            dataset_id = dataset_raw.get('id', 'N/A')
                             err_msg = f"🔥 Dataset {dataset_id}: Error during evaluation - {type(exc).__name__}: {exc}"
                             st.session_state.evaluation_errors.append(err_msg)
-                            # --- Add Detailed Exception Logging Here ---
                             print(f"--- ERROR CAUGHT IN APP.PY for dataset {dataset_id} ---")
                             print(f"Exception Type: {type(exc).__name__}")
                             print(f"Exception Args: {exc.args}")
                             print(f"Exception __str__: {exc}")
                             print(f"Exception __repr__: {repr(exc)}")
                             print("Traceback from app.py:")
-                            traceback.print_exc() # Print traceback seen by this loop
+                            traceback.print_exc()
                             print("--- END ERROR CAUGHT IN APP.PY ---")
-                            # --- End Detailed Logging ---
                             st.toast(f"🔥 Error evaluating {dataset_id}: {exc}", icon="🔥")
                         
                         processed_count += 1
-                        # Update progress bar
                         progress_percentage = processed_count / total_datasets
                         status_text.text(f"Evaluating dataset {processed_count}/{total_datasets} ({dataset_id})...")
                         progress_bar.progress(progress_percentage)
             
-            # Ensure progress bar completes and status updates
             progress_bar.progress(1.0)
             status_text.text(f"Evaluation complete. Processed {len(st.session_state.evaluated_datasets)} / {total_datasets} datasets.")
 
-            # --- Step 5: Sorting Step (based on LLM score) ---
             if st.session_state.evaluated_datasets:
                 st.subheader("5. Sorting Datasets by Relevance Score...")
                 with st.spinner("Sorting datasets based on LLM evaluation..."):
                     st.session_state.evaluated_datasets.sort(
                         key=lambda x: x.get('relevance_score', 0.0), 
-                        reverse=True # Higher score first
+                        reverse=True
                     )
                 st.success(f"Sorting complete. Displaying {len(st.session_state.evaluated_datasets)} evaluated datasets.")
             else:
                 st.info("No datasets were successfully evaluated, skipping sorting.")
-            # --- End Sorting Step ---
     except Exception as e:
         st.session_state.error_message = f"An error occurred during Hugging Face search or processing: {e}"
         st.error(st.session_state.error_message)
-        st.exception(e) # Show full traceback for errors
-        st.session_state.search_triggered = False # Ensure search is marked as not done on error
-        st.session_state.datasets = [] # Clear datasets on error
-        st.session_state.evaluated_datasets = [] # Also clear evaluated datasets
+        st.exception(e)
+        st.session_state.search_triggered = False
+        st.session_state.datasets = []
+        st.session_state.evaluated_datasets = []
 
+def should_include_dataset(dataset, advanced_options):
+    """
+    Check if a dataset matches the advanced search criteria.
+    Only strictly filter on data size and time range.
+    Other filters are passed as context to the LLM for ranking.
+    """
+    # Extract metadata fields
+    metadata = dataset.get('metadata', {})
+    
+    # Only apply strict filtering for these two criteria
+    
+    # Check data size (strict filter)
+    size_preference = advanced_options.get('data_sizes', ['Any Size'])
+    if 'Any Size' not in size_preference:
+        dataset_size = metadata.get('data_size_estimate', '')
+        if not dataset_size or not any(size.lower() in dataset_size.lower() for size in size_preference):
+            return False
+    
+    # Check time range (strict filter)
+    time_range = advanced_options.get('time_range', 'Any Time')
+    if time_range != 'Any Time':
+        last_modified = metadata.get('last_modified', '')
+        if not is_within_time_range(last_modified, time_range):
+            return False
+    
+    # If we've reached here, the dataset passes all strict filters
+    # Domain, task, license, quality, and language are now just preferences for LLM ranking
+    return True
+
+def format_advanced_search_context(options):
+    """
+    Format advanced search options into a string for LLM context.
+    """
+    context_parts = []
+    
+    # Function to check if a field has non-default selections
+    def has_specific_selections(field, default_option):
+        return field in options and options[field] and default_option not in options[field]
+    
+    # Handle domains
+    if has_specific_selections('domains', 'All Domains'):
+        domains = options['domains']
+        # Add custom domains if they exist
+        custom_domains = options.get('custom_domains', [])
+        context_parts.append(f"Domains: {', '.join(domains)}")
+        if custom_domains:
+            context_parts.append(f"Custom Domains: {', '.join(custom_domains)}")
+    
+    # Handle tasks
+    if has_specific_selections('tasks', 'All Tasks'):
+        tasks = options['tasks']
+        # Add custom tasks if they exist
+        custom_tasks = options.get('custom_tasks', [])
+        context_parts.append(f"Task Types: {', '.join(tasks)}")
+        if custom_tasks:
+            context_parts.append(f"Custom Tasks: {', '.join(custom_tasks)}")
+    
+    # Handle data sizes
+    if has_specific_selections('data_sizes', 'Any Size'):
+        context_parts.append(f"Data Sizes: {', '.join(options['data_sizes'])}")
+    
+    # Handle licenses
+    if has_specific_selections('licenses', 'All Licenses'):
+        licenses = options['licenses']
+        # Add custom licenses if they exist
+        custom_licenses = options.get('custom_licenses', [])
+        context_parts.append(f"Licenses: {', '.join(licenses)}")
+        if custom_licenses:
+            context_parts.append(f"Custom Licenses: {', '.join(custom_licenses)}")
+    
+    # Handle quality criteria
+    if has_specific_selections('quality_criteria', 'All Quality Levels'):
+        quality = options['quality_criteria']
+        # Add custom quality criteria if they exist
+        custom_quality = options.get('custom_quality', [])
+        context_parts.append(f"Quality Requirements: {', '.join(quality)}")
+        if custom_quality:
+            context_parts.append(f"Custom Quality Requirements: {', '.join(custom_quality)}")
+    
+    # Handle languages
+    if has_specific_selections('languages', 'All Languages'):
+        languages = options['languages']
+        # Add custom languages if they exist
+        custom_languages = options.get('custom_languages', [])
+        context_parts.append(f"Languages: {', '.join(languages)}")
+        if custom_languages:
+            context_parts.append(f"Custom Languages: {', '.join(custom_languages)}")
+    
+    # Handle time range
+    if options.get('time_range') and options['time_range'] != 'Any Time':
+        context_parts.append(f"Time Range: {options['time_range']}")
+    
+    if not context_parts:
+        return "No specific advanced criteria applied."
+    
+    return "\n".join(context_parts)
+
+def is_within_time_range(last_modified, time_range):
+    """
+    Check if a dataset's last modified date is within the specified time range.
+    """
+    if not last_modified or time_range == 'Any Time':
+        return True
+        
+    try:
+        last_modified_time = pd.to_datetime(last_modified)
+        current_time = pd.Timestamp.now()
+        
+        if time_range == 'Last 6 months':
+            return (current_time - last_modified_time).days <= 180
+        elif time_range == 'Last year':
+            return (current_time - last_modified_time).days <= 365
+        elif time_range == 'Last 2 years':
+            return (current_time - last_modified_time).days <= 730
+        elif time_range == 'Last 5 years':
+            return (current_time - last_modified_time).days <= 1825
+        elif 'Last' in time_range:
+            # Try to parse custom time range
+            match = re.match(r'Last (\d+) (\w+)', time_range)
+            if match:
+                number, unit = match.groups()
+                number = int(number)
+                if unit.lower() in ['month', 'months']:
+                    return (current_time - last_modified_time).days <= number * 30
+                elif unit.lower() in ['year', 'years']:
+                    return (current_time - last_modified_time).days <= number * 365
+    except Exception:
+        return True
+    
+    return True
 
 st.set_page_config(
     layout="wide", 
@@ -509,10 +798,209 @@ if st.session_state.mode == "assistive" and st.session_state.workflow_step > 0:
         
         st.markdown("---")
 
-user_intent = st.text_area("Enter your research intent:",
-                         height=100,
-                         placeholder="e.g., Datasets for analyzing customer churn in the telecommunications sector",
-                         key="user_intent_main_input") # Key is sufficient
+# Initialize advanced search state
+initialize_advanced_search_state()
+
+# Main intent input
+user_intent = st.text_area(
+    "Research Intent",
+    key="user_intent_main_input",  # Keep key but remove value setting here
+    height=100,
+    help="Describe the type of dataset you're looking for in natural language.",
+    placeholder="Example: I need a dataset for sentiment analysis of product reviews in multiple languages..."
+)
+
+# Update session state when text area changes
+if "user_intent_main_input" not in st.session_state:
+    st.session_state.user_intent_main_input = ""
+
+# Advanced Search Options
+with st.expander("🔍 Advanced Search Options", expanded=False):
+    st.markdown("""
+    <style>
+    .advanced-search {
+        padding: 1rem;
+        border-radius: 0.5rem;
+        background-color: #f8f9fa;
+    }
+    .preference-filter {
+        border-left: 3px solid #4CAF50;
+        padding-left: 10px;
+        margin-bottom: 10px;
+    }
+    .strict-filter {
+        border-left: 3px solid #FF5722;
+        padding-left: 10px;
+        margin-bottom: 10px;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    st.markdown("""
+    #### Search Preferences
+    The following options help the LLM understand your preferences. They are not strict filters but will influence ranking and recommendations.
+    """)
+    
+    with st.container():
+        # Domain Specification
+        with st.container():
+            st.markdown('<div class="preference-filter">', unsafe_allow_html=True)
+            create_multiselect_with_custom(
+                "Domain",
+                PREDEFINED_DOMAINS,
+                "domains",
+                "Select one or more domains for the dataset (preference, not strict filter)",
+                "Add custom domain..."
+            )
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Task Type
+        with st.container():
+            st.markdown('<div class="preference-filter">', unsafe_allow_html=True)
+            create_multiselect_with_custom(
+                "Task Type",
+                PREDEFINED_TASKS,
+                "tasks",
+                "Select one or more task types (preference, not strict filter)",
+                "Add custom task..."
+            )
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        # License Requirements
+        with st.container():
+            st.markdown('<div class="preference-filter">', unsafe_allow_html=True)
+            create_multiselect_with_custom(
+                "License",
+                PREDEFINED_LICENSES,
+                "licenses",
+                "Select one or more license types (preference, not strict filter)",
+                "Add custom license..."
+            )
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Quality Requirements
+        with st.container():
+            st.markdown('<div class="preference-filter">', unsafe_allow_html=True)
+            create_multiselect_with_custom(
+                "Quality Criteria",
+                QUALITY_CRITERIA,
+                "quality_criteria",
+                "Select quality requirements (preference, not strict filter)",
+                "Add custom criterion..."
+            )
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Language Preferences
+        with st.container():
+            st.markdown('<div class="preference-filter">', unsafe_allow_html=True)
+            create_multiselect_with_custom(
+                "Languages",
+                PREDEFINED_LANGUAGES,
+                "languages",
+                "Select one or more languages (preference, not strict filter)",
+                "Add custom language..."
+            )
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        st.markdown("""
+        #### Strict Filters
+        The following options will be applied as strict filters. Datasets that don't match these will be excluded.
+        """)
+        
+        # Data Size Preferences
+        with st.container():
+            st.markdown('<div class="strict-filter">', unsafe_allow_html=True)
+            # Ensure the field is initialized in session state
+            if "data_sizes" not in st.session_state.advanced_search_options:
+                st.session_state.advanced_search_options["data_sizes"] = ["Any Size"]
+                
+            selected_sizes = st.multiselect(
+                "Data Size",
+                DATA_SIZE_OPTIONS,
+                default=st.session_state.advanced_search_options.get("data_sizes", ["Any Size"]),
+                help="Select preferred dataset sizes (strict filter - only matching datasets will be shown)",
+                key="data_size_multiselect"
+            )
+            
+            # Handle empty selection - restore default
+            if not selected_sizes:
+                selected_sizes = ["Any Size"]
+            # Handle default option deselection
+            elif "Any Size" in selected_sizes and len(selected_sizes) > 1:
+                selected_sizes = [size for size in selected_sizes if size != "Any Size"]
+                
+            # Update session state with a new list
+            st.session_state.advanced_search_options["data_sizes"] = selected_sizes.copy()
+            st.markdown('</div>', unsafe_allow_html=True)
+        
+        # Time Sensitivity
+        with st.container():
+            st.markdown('<div class="strict-filter">', unsafe_allow_html=True)
+            st.markdown("### Time Range")
+            # Ensure time_range is initialized
+            if "time_range" not in st.session_state.advanced_search_options:
+                st.session_state.advanced_search_options["time_range"] = "Any Time"
+
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                selected_time = st.selectbox(
+                    "Predefined Time Range",
+                    TIME_RANGES,
+                    index=TIME_RANGES.index(st.session_state.advanced_search_options.get("time_range", "Any Time")),
+                    help="Select time range for dataset creation/updates (strict filter - only datasets within this range will be shown)"
+                )
+                
+                # Only update if the selection is a predefined option
+                if selected_time in TIME_RANGES:
+                    st.session_state.advanced_search_options["time_range"] = selected_time
+                    # Reset custom time if a predefined option is selected
+                    st.session_state.advanced_search_options["custom_time_range"] = None
+                    
+            with col2:
+                show_custom = st.button("Custom Range", key="show_custom_time_btn")
+                if show_custom:
+                    st.session_state.show_custom_time = True
+
+            # Show custom time input if requested
+            if st.session_state.get("show_custom_time", False):
+                custom_time = st.text_input(
+                    "Custom Time Range",
+                    value=st.session_state.advanced_search_options.get("custom_time_range", ""),
+                    help="Enter custom time range (e.g., 'Last 3 years', 'Last 6 months')",
+                    key="custom_time_input"
+                )
+                
+                col1, col2 = st.columns([1, 1])
+                with col1:
+                    if st.button("Apply Custom Range", key="apply_custom_time_btn"):
+                        if custom_time.strip():
+                            # Validate custom time format
+                            if custom_time.lower().startswith("last") and any(unit in custom_time.lower() for unit in ["year", "month", "day", "week"]):
+                                st.session_state.advanced_search_options["time_range"] = custom_time
+                                st.session_state.advanced_search_options["custom_time_range"] = custom_time
+                                st.success(f"Applied custom time range: {custom_time}")
+                            else:
+                                st.warning("Custom time should be in format 'Last X years/months/weeks/days'")
+                        else:
+                            st.warning("Please enter a custom time range")
+                
+                with col2:
+                    if st.button("Cancel", key="cancel_custom_time_btn"):
+                        st.session_state.show_custom_time = False
+                        st.rerun()
+            st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Info message about how filters work
+    st.info("""
+    **How Search Options Work:**
+    - **Preference filters** (green): These inform the LLM of your preferences for ranking and recommendations, but won't exclude datasets.
+    - **Strict filters** (orange): These will exclude datasets that don't match the criteria. If too few datasets are found, the search will automatically expand.
+    """)
+    
+    # Reset button
+    if st.button("Reset Advanced Options"):
+        reset_advanced_search()
+        st.rerun()
 
 # Update session state when text area changes (necessary for example buttons to work seamlessly)
 # No longer needed - st.session_state.user_intent_input = user_intent
@@ -543,6 +1031,7 @@ with st.expander("📋 Try an example intent", expanded=False):
 # Define callback function BEFORE the loop
 def update_intent_input(example_text):
     st.session_state.user_intent_main_input = example_text
+    st.session_state.user_intent = example_text  # Also update the user_intent state for consistency
 
 cols = st.columns(len(examples))
 for i, example in enumerate(examples):
@@ -596,7 +1085,8 @@ if st.session_state.workflow_step == 0 and st.button("Discover Datasets"):
                 # Format the prompt (ensure it contains {user_intent})
                 formatted_keyword_prompt = keyword_prompt_template.format(
                     user_intent=user_intent,
-                    researcher_profile=st.session_state.get('researcher_profile', 'No profile provided')
+                    researcher_profile=st.session_state.get('researcher_profile', 'No profile provided'),
+                    advanced_search_context=format_advanced_search_context(st.session_state.advanced_search_options)  # Add advanced search context
                 )
                 
                 llm_model_to_use = st.session_state.selected_model # Use model from session state
@@ -633,7 +1123,11 @@ if st.session_state.workflow_step == 0 and st.button("Discover Datasets"):
                             if not criteria_prompt_template or criteria_prompt_template.startswith("Error:"):
                                 raise ValueError("Criteria Generation Prompt is missing or invalid. Check sidebar settings.")
                             
-                            formatted_criteria_prompt = criteria_prompt_template.format(user_intent=user_intent)
+                            formatted_criteria_prompt = criteria_prompt_template.format(
+                                user_intent=user_intent,
+                                researcher_profile=st.session_state.get('researcher_profile', 'No profile provided'),
+                                advanced_search_context=format_advanced_search_context(st.session_state.advanced_search_options)
+                            )
                             criteria_llm_output = get_llm_response(prompt=formatted_criteria_prompt, model=st.session_state.selected_model)
                             
                             # Parse the criteria (expected JSON list of strings)
@@ -753,7 +1247,11 @@ elif st.session_state.workflow_step == 2:
                 if not criteria_prompt_template or criteria_prompt_template.startswith("Error:"):
                     raise ValueError("Criteria Generation Prompt is missing or invalid. Check sidebar settings.")
                 
-                formatted_criteria_prompt = criteria_prompt_template.format(user_intent=user_intent)
+                formatted_criteria_prompt = criteria_prompt_template.format(
+                    user_intent=user_intent,
+                    researcher_profile=st.session_state.get('researcher_profile', 'No profile provided'),
+                    advanced_search_context=format_advanced_search_context(st.session_state.advanced_search_options)
+                )
                 llm_model_to_use = st.session_state.selected_model # Use model from session state
                 criteria_llm_output = get_llm_response(prompt=formatted_criteria_prompt, model=llm_model_to_use)
                 
@@ -824,7 +1322,11 @@ elif st.session_state.workflow_step == 2:
                     if not criteria_prompt_template or criteria_prompt_template.startswith("Error:"):
                         raise ValueError("Criteria Generation Prompt is missing or invalid. Check sidebar settings.")
                     
-                    formatted_criteria_prompt = criteria_prompt_template.format(user_intent=user_intent)
+                    formatted_criteria_prompt = criteria_prompt_template.format(
+                        user_intent=user_intent,
+                        researcher_profile=st.session_state.get('researcher_profile', 'No profile provided'),
+                        advanced_search_context=format_advanced_search_context(st.session_state.advanced_search_options)
+                    )
                     llm_model_to_use = st.session_state.selected_model # Use model from session state
                     criteria_llm_output = get_llm_response(prompt=formatted_criteria_prompt, model=llm_model_to_use)
                     
@@ -1160,9 +1662,10 @@ Evaluated Datasets Summary (Top {len(st.session_state.evaluated_datasets)}):
                     raise ValueError("Report Generation Prompt is missing or invalid. Check sidebar settings or create prompts/generate_report.txt.")
                 
                 # Format the prompt (ensure it contains {report_context} and {researcher_profile})
-                report_prompt = report_prompt_template.format(
+                formatted_report_prompt = report_prompt_template.format(
                     report_context=report_context,
-                    researcher_profile=st.session_state.get('researcher_profile', 'No profile provided')
+                    researcher_profile=st.session_state.get('researcher_profile', 'No profile provided'),
+                    advanced_search_context=format_advanced_search_context(st.session_state.advanced_search_options)
                 )
 
                 try:
@@ -1292,7 +1795,7 @@ Evaluated Datasets Summary (Top {len(st.session_state.evaluated_datasets)}):
                     with st.spinner("Synthesizing findings with LLM..."):
                         llm_model_to_use = st.session_state.selected_model # Use model from session state
                         report_output = get_llm_response(
-                            prompt=report_prompt, 
+                            prompt=formatted_report_prompt, 
                             model=llm_model_to_use,
                             # Increase max tokens if needed for longer reports
                             # max_tokens=4000 
@@ -1341,9 +1844,10 @@ Evaluated Datasets Summary (Top {len(st.session_state.evaluated_datasets)}):
                             raise ValueError("Report Generation Prompt is missing or invalid. Check sidebar settings or create prompts/generate_report.txt.")
                         
                         # Format the prompt (ensure it contains {report_context} and {researcher_profile})
-                        report_prompt = report_prompt_template.format(
+                        formatted_report_prompt = report_prompt_template.format(
                             report_context=report_context,
-                            researcher_profile=st.session_state.get('researcher_profile', 'No profile provided')
+                            researcher_profile=st.session_state.get('researcher_profile', 'No profile provided'),
+                            advanced_search_context=format_advanced_search_context(st.session_state.advanced_search_options)
                         )
 
                         try:
@@ -1475,7 +1979,7 @@ Evaluated Datasets Summary (Top {len(st.session_state.evaluated_datasets)}):
                             with st.spinner("Synthesizing findings with LLM..."):
                                 llm_model_to_use = st.session_state.selected_model # Use model from session state
                                 report_output = get_llm_response(
-                                    prompt=report_prompt, 
+                                    prompt=formatted_report_prompt, 
                                     model=llm_model_to_use,
                                     # Increase max tokens if needed for longer reports
                                     # max_tokens=4000 

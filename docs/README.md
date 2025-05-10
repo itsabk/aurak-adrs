@@ -13,6 +13,7 @@ Welcome to the documentation for the Automated Dataset Recommendation System (AD
 - [User Guide](user_guide.md) - Step-by-step instructions for using ADRS
   - Installation and setup
   - User interface overview
+  - Advanced search options
   - Workflow guides for both Auto and Assistive modes
   - Results interpretation
   - Troubleshooting
@@ -22,6 +23,7 @@ Welcome to the documentation for the Automated Dataset Recommendation System (AD
 - [Technical Documentation](technical_documentation.md) - Detailed technical information
   - System architecture
   - Operating modes
+  - Advanced search implementation
   - Workflow details
   - Configuration options
   - Metadata schema
@@ -39,7 +41,9 @@ ADRS is an AI-powered system that leverages Large Language Models (LLMs) to help
 Key features include:
 
 - Natural language dataset discovery
+- Advanced search options with preference and strict filters
 - Automatic keyword and criteria generation
+- Smart filtering with automatic expansion for optimal results
 - LLM-based dataset evaluation and ranking
 - Comprehensive reports and interactive visualizations
 - Dual operating modes (Auto and Assistive)
